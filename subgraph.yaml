@@ -1,0 +1,59 @@
+specVersion: 0.0.1
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: mainnet
+    source:
+      address: "0xb6dAe651468E9593E4581705a09c10A76AC1e0c8"
+      abi: Contract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.2
+      language: wasm/assemblyscript
+      entities:
+        - Approval
+        - ApprovalForAll
+        - ArtistSecondSalePercentUpdated
+        - BidProposed
+        - BidWithdrawn
+        - BuyPriceSet
+        - ControlLeverUpdated
+        - CreatorWhitelisted
+        - PermissionUpdated
+        - PlatformAddressUpdated
+        - PlatformSalePercentageUpdated
+        - TokenSale
+        - Transfer
+      abis:
+        - name: Contract
+          file: ./abis/Contract.json
+      eventHandlers:
+        - event: Approval(indexed address,indexed address,indexed uint256)
+          handler: handleApproval
+        - event: ApprovalForAll(indexed address,indexed address,bool)
+          handler: handleApprovalForAll
+        - event: ArtistSecondSalePercentUpdated(uint256)
+          handler: handleArtistSecondSalePercentUpdated
+        - event: BidProposed(uint256,uint256,address)
+          handler: handleBidProposed
+        - event: BidWithdrawn(uint256)
+          handler: handleBidWithdrawn
+        - event: BuyPriceSet(uint256,uint256)
+          handler: handleBuyPriceSet
+        - event: ControlLeverUpdated(uint256,uint256,int256,uint256[],int256[],int256[])
+          handler: handleControlLeverUpdated
+        - event: CreatorWhitelisted(uint256,uint256,address)
+          handler: handleCreatorWhitelisted
+        - event: PermissionUpdated(uint256,address,address)
+          handler: handlePermissionUpdated
+        - event: PlatformAddressUpdated(address)
+          handler: handlePlatformAddressUpdated
+        - event: PlatformSalePercentageUpdated(uint256,uint256,uint256)
+          handler: handlePlatformSalePercentageUpdated
+        - event: TokenSale(uint256,uint256,address)
+          handler: handleTokenSale
+        - event: Transfer(indexed address,indexed address,indexed uint256)
+          handler: handleTransfer
+      file: ./src/mapping.ts
