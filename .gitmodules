@@ -1,0 +1,3 @@
+[submodule "async-contracts"]
+	path = async-contracts
+	url = https://github.com/asyncart/async-contracts

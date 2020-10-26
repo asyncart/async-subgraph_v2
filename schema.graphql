@@ -12,6 +12,7 @@ type EventParam @entity {
   paramName: String!
   paramType: String!
 }
+
 type EventParams @entity {
   id: ID!
   index: Int!

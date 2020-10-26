@@ -21,7 +21,7 @@ import {
 } from "./util";
 
 export function handleApproval(event: Approval): void {
-
+  
   let owner = event.params.owner;
   let ownerString = owner.toHex();
   let txTimestamp = event.block.timestamp;
