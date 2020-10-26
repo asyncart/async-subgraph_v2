@@ -4,7 +4,7 @@
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
-    "deploy": "graph deploy --node https://api.thegraph.com/deploy/ --ipfs https://api.thegraph.com/ipfs/ avolabs-io/async-subgraph_v2",
+    "deploy": "graph deploy --node https://api.thegraph.com/deploy/ --ipfs https://api.thegraph.com/ipfs/ avolabs-io/async_art_v2",
     "create-local": "graph create --node http://localhost:8020/ avolabs-io/async-subgraph_v2",
     "remove-local": "graph remove --node http://localhost:8020/ avolabs-io/async-subgraph_v2",
     "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 avolabs-io/async-subgraph_v2"
