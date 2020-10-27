@@ -4,7 +4,7 @@
 ####### CONFIG #######
 ######################
 RPC_ENDPOINT="http://localhost:8545"
-TOTAL_WAITING_TIME=45 # seconds
+TOTAL_WAITING_TIME=200 # seconds
 WAIT_FOR_INPUT=true
 ROOT_DIR=$(pwd)
 ######################
@@ -60,7 +60,6 @@ function doneLoop {
 function start {
     echo "####### CLEANUP #######"
     sudo rm -rf data ganache-data
-    sudo rm -f ./contracts/.openzeppelin/dev-321.json
 
     echo "####### DOCKER-COMPOSE #######"
     docker-compose up 2>&1 > /dev/null &
@@ -80,11 +79,11 @@ function start {
     done
 
     echo "####### DEPLOYING CONTRACTS #######"
-    cd ./contracts && truffle migrate --reset --network graphTesting
+    cd ./async-contracts && truffle migrate --reset --network graphTesting
     if [ "$?" -ne 0 ];
     then
         echo "ERROR: Could not deploy contracts successfully"
-        killAndExit
+        # killAndExit
     fi
     cd ../graph
 
