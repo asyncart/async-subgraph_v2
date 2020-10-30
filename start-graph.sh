@@ -85,7 +85,7 @@ function start {
         echo "ERROR: Could not deploy contracts successfully"
         # killAndExit
     fi
-    cd ../graph
+    cd ..
 
     sleep 5 ## Sometimes it takes a bit longer for the graph to be ready.
     graphCreate

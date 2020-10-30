@@ -1,4 +1,4 @@
-import { BigInt } from "@graphprotocol/graph-ts"
+import { BigInt } from "@graphprotocol/graph-ts";
 import {
   Contract,
   Approval,
@@ -13,23 +13,18 @@ import {
   PlatformAddressUpdated,
   PlatformSalePercentageUpdated,
   TokenSale,
-  Transfer
-} from "../generated/Contract/Contract"
-import { ExampleEntity } from "../generated/schema"
-import {
-  saveEventToStateChange,
-} from "./util";
+  Transfer,
+} from "../generated/Contract/Contract";
+import { ExampleEntity } from "../generated/schema";
+import { saveEventToStateChange } from "./util";
 
 export function handleApproval(event: Approval): void {
-  
   let owner = event.params.owner;
   let ownerString = owner.toHex();
   let txTimestamp = event.block.timestamp;
   let blockNumber = event.block.number;
 
-  let eventParamValues: Array<string> = [
-    ownerString,
-  ];
+  let eventParamValues: Array<string> = [ownerString];
   let eventParamNames: Array<string> = ["owner"];
   let eventParamTypes: Array<string> = ["address"];
 
@@ -61,7 +56,13 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {}
 
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {}
 
-export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {}
+export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let user = new ExampleEntity(txTimestamp.toString());
+  user.blockNumber = blockNumber;
+  user.save();
+}
 
 export function handlePermissionUpdated(event: PermissionUpdated): void {}
 
