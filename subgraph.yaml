@@ -6,7 +6,7 @@ dataSources:
     name: Contract
     network: ganache
     source:
-      address: "0x5Db1Dd1980E17050B38413B0561d95CF781CB8C5"
+      address: "0x13759fA52EBf752aF1bbe4b6Fd6A09B6839d737c"
       abi: Contract
       startBlock: 0
     mapping:

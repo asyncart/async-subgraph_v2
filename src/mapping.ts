@@ -1,4 +1,4 @@
-import { BigInt } from "@graphprotocol/graph-ts";
+import { BigInt, log } from "@graphprotocol/graph-ts";
 import {
   Contract,
   Approval,
@@ -57,6 +57,8 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {}
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {}
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
+  log.warning("Whitelist", []);
+
   let txTimestamp = event.block.timestamp;
   let blockNumber = event.block.number;
   let user = new ExampleEntity(txTimestamp.toString());
