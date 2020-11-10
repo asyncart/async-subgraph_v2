@@ -15,8 +15,12 @@ import {
   TokenSale,
   Transfer,
 } from "../generated/Contract/Contract";
-import { GlobalState, ArtworkMaster, Artist } from "../generated/schema";
-import { saveEventToStateChange } from "./util";
+import { GlobalState, Artist, Bid } from "../generated/schema";
+import {
+  saveEventToStateChange,
+  getOrInitialiseGlobalState,
+  createTokensFromMasterTokenId,
+} from "./util";
 
 export function handleApproval(event: Approval): void {
   let owner = event.params.owner;
@@ -49,22 +53,30 @@ export function handleArtistSecondSalePercentUpdated(
 ): void {
   let newSecondPercentage = event.params.artistSecondPercentage;
   let asyncContract = Contract.bind(event.address);
-
-  let globalState = GlobalState.load("MASTER");
-  if (globalState == null) {
-    globalState = new GlobalState("MASTER");
-    globalState.latestMasterTokenId = BigInt.fromI32(0);
-    globalState.currentExpectedTokenSupply = BigInt.fromI32(0);
-    globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
-    globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
-    globalState.platformAddress = asyncContract.platformAddress();
-  }
+  let globalState = getOrInitialiseGlobalState(asyncContract);
 
   globalState.artistSecondSalePercentage = newSecondPercentage;
   globalState.save();
 }
 
-export function handleBidProposed(event: BidProposed): void {}
+export function handleBidProposed(event: BidProposed): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let bidAmount = event.params.bidAmount;
+  let bidder = event.params.bidder;
+
+  let bid = new Bid(tokenId.toString() + "-" + txHash.toString());
+  bid.tokenId = tokenId;
+  bid.bidAmount = bidAmount;
+  bid.bidder = bidder;
+  bid.bidTimestamp = txTimestamp;
+  bid.bidActive = true;
+  bid.bidAccepted = false;
+
+  bid.save();
+}
 
 export function handleBidWithdrawn(event: BidWithdrawn): void {}
 
@@ -90,38 +102,15 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
     tokenId
   );
 
-  let globalState = GlobalState.load("MASTER");
-  if (globalState == null) {
-    globalState = new GlobalState("MASTER");
-    globalState.latestMasterTokenId = BigInt.fromI32(0);
-    globalState.currentExpectedTokenSupply = BigInt.fromI32(0);
-    globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
-    globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
-    globalState.platformAddress = asyncContract.platformAddress();
-  }
+  let globalState = getOrInitialiseGlobalState(asyncContract);
 
   globalState.latestMasterTokenId = tokenId;
   globalState.currentExpectedTokenSupply = tokenId
     .plus(layerCount)
     .plus(BigInt.fromI32(1));
 
-  let artist = Artist.load(artistAddressString);
-  if (artist == null) {
-    artist = new Artist(artistAddressString);
-  }
+  createTokensFromMasterTokenId(asyncContract, tokenId, layerCount);
 
-  let artwork = new ArtworkMaster(
-    tokenId.toString() + "-" + artistAddressString
-  );
-
-  artwork.creator = artist.id;
-  artwork.masterId = tokenId;
-  artwork.layerCount = layerCount;
-  artwork.platformFirstSalePercentage = platformFirstSalePercentage;
-  artwork.platformSecondSalePercentage = platformSecondSalePercentage;
-
-  artist.save();
-  artwork.save();
   globalState.save();
 }
 
@@ -132,16 +121,7 @@ export function handlePlatformAddressUpdated(
 ): void {
   let newPlatformAddress = event.params.platformAddress;
   let asyncContract = Contract.bind(event.address);
-
-  let globalState = GlobalState.load("MASTER");
-  if (globalState == null) {
-    globalState = new GlobalState("MASTER");
-    globalState.latestMasterTokenId = BigInt.fromI32(0);
-    globalState.currentExpectedTokenSupply = BigInt.fromI32(0);
-    globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
-    globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
-    globalState.platformAddress = asyncContract.platformAddress();
-  }
+  let globalState = getOrInitialiseGlobalState(asyncContract);
 
   globalState.platformAddress = newPlatformAddress;
   globalState.save();
