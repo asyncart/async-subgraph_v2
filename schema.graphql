@@ -1,6 +1,23 @@
-type ExampleEntity @entity {
-  id: ID!
-  blockNumber: BigInt!
+type GlobalState @entity {
+  id: ID! #Singleton "MASTER"
+  latestMasterTokenId: BigInt!
+  currentExpectedTokenSupply: BigInt!
+  minBidIncreasePercent: BigInt!
+  artistSecondSalePercentage: BigInt!
+  platformAddress: Bytes!
+}
+
+type ArtworkMaster @entity {
+  id: ID! # master token id - creator address
+  creator: Artist!
+  masterId: BigInt!
+  layerCount: BigInt!
+  platformFirstSalePercentage: BigInt!
+  platformSecondSalePercentage: BigInt!
+}
+
+type Artist @entity {
+  id: ID! # artists address
 }
 
 type EventParam @entity {
@@ -34,6 +51,7 @@ type StateChange @entity {
 type Owner @entity {
   id: ID!
 }
+
 type Artwork @entity {
   id: ID!
 }
