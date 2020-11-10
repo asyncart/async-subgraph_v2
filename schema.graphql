@@ -7,17 +7,50 @@ type GlobalState @entity {
   platformAddress: Bytes!
 }
 
-type ArtworkMaster @entity {
-  id: ID! # master token id - creator address
-  creator: Artist!
-  masterId: BigInt!
-  layerCount: BigInt!
+type Token @entity {
+  id: ID! # token id
+  # creator: Artist!
+  tokenId: BigInt!
+  isMaster: Boolean!
+  tokenMaster: TokenMaster
+  tokenController: TokenController
+  currentBid: Bid
   platformFirstSalePercentage: BigInt!
   platformSecondSalePercentage: BigInt!
+  currentBuyPrice: BigInt!
+  lastSalePrice: BigInt!
+  numberOfSales: BigInt!
+  # Permissioned stuff here
+}
+
+type TokenMaster @entity {
+  id: ID! # token id - "Master"
+  layerCount: BigInt!
+}
+
+type TokenController @entity {
+  id: ID! # token id - "Controller"
+}
+
+type tokenControlLever @entity {
+  id: ID! # token ID - token lever ID
+  minValue: BigInt!
+  maxValue: BigInt!
+  currentValue: BigInt!
 }
 
 type Artist @entity {
   id: ID! # artists address
+}
+
+type Bid @entity {
+  id: ID! # tokenId - txhash
+  tokenId: BigInt!
+  bidAmount: BigInt!
+  bidder: Bytes! #Change to user object
+  bidTimestamp: BigInt!
+  bidActive: Boolean!
+  bidAccepted: Boolean!
 }
 
 type EventParam @entity {
