@@ -15,11 +15,12 @@ import {
   TokenSale,
   Transfer,
 } from "../generated/Contract/Contract";
-import { GlobalState, Artist, Bid } from "../generated/schema";
+import { GlobalState, Artist, Bid, Token } from "../generated/schema";
 import {
   saveEventToStateChange,
   getOrInitialiseGlobalState,
   createTokensFromMasterTokenId,
+  populateTokenUniqueCreators,
 } from "./util";
 
 export function handleApproval(event: Approval): void {
@@ -55,6 +56,9 @@ export function handleArtistSecondSalePercentUpdated(
   let asyncContract = Contract.bind(event.address);
   let globalState = getOrInitialiseGlobalState(asyncContract);
 
+  // Testing purposes
+  populateTokenUniqueCreators(asyncContract, BigInt.fromI32(1));
+
   globalState.artistSecondSalePercentage = newSecondPercentage;
   globalState.save();
 }
@@ -67,18 +71,50 @@ export function handleBidProposed(event: BidProposed): void {
   let bidAmount = event.params.bidAmount;
   let bidder = event.params.bidder;
 
-  let bid = new Bid(tokenId.toString() + "-" + txHash.toString());
-  bid.tokenId = tokenId;
-  bid.bidAmount = bidAmount;
-  bid.bidder = bidder;
-  bid.bidTimestamp = txTimestamp;
-  bid.bidActive = true;
-  bid.bidAccepted = false;
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("This should be defined", []);
+  } else {
+    let bid = new Bid(tokenId.toString() + "-" + txHash.toHex());
+    bid.tokenId = tokenId;
+    bid.bidAmount = bidAmount;
+    bid.bidder = bidder;
+    bid.bidTimestamp = txTimestamp;
+    bid.bidActive = true;
+    bid.bidAccepted = false;
 
-  bid.save();
+    let oldBid = Bid.load(token.currentBid);
+    if (oldBid != null) {
+      oldBid.bidActive = false;
+      oldBid.save();
+    }
+
+    token.currentBid = bid.id;
+
+    token.save();
+    bid.save();
+  }
 }
 
-export function handleBidWithdrawn(event: BidWithdrawn): void {}
+export function handleBidWithdrawn(event: BidWithdrawn): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  } else {
+    let bid = Bid.load(token.currentBid);
+    if (bid == null) {
+      log.critical("Bid should be defined", []);
+    } else {
+      bid.bidActive = false;
+      bid.save();
+    }
+  }
+}
 
 export function handleBuyPriceSet(event: BuyPriceSet): void {}
 
@@ -111,6 +147,7 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
 
   createTokensFromMasterTokenId(asyncContract, tokenId, layerCount);
 
+  populateTokenUniqueCreators(asyncContract, tokenId);
   globalState.save();
 }
 
