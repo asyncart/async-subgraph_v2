@@ -20,6 +20,7 @@ type Token @entity {
   currentBuyPrice: BigInt!
   lastSalePrice: BigInt!
   numberOfSales: BigInt!
+  uniqueTokenCreators: [Bytes!]
   # Permissioned stuff here
 }
 
@@ -30,6 +31,9 @@ type TokenMaster @entity {
 
 type TokenController @entity {
   id: ID! # token id - "Controller"
+  numControlLevers: BigInt!
+  numRemainingUpdates: BigInt!
+  isSetup: Boolean!
 }
 
 type tokenControlLever @entity {

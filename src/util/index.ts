@@ -27,6 +27,48 @@ export function getOrInitialiseGlobalState(
   return globalState;
 }
 
+export function refreshGlobalState(asyncContract: Contract): void {
+  let globalState = GlobalState.load("MASTER");
+
+  // Pull and set latest values from the contracts.
+  // Set latestMasterTokenId
+  globalState.currentExpectedTokenSupply = asyncContract.expectedTokenSupply();
+  globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
+  globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
+  globalState.platformAddress = asyncContract.platformAddress();
+  globalState.save();
+}
+
+export function populateTokenUniqueCreators(
+  asyncContract: Contract,
+  tokenId: BigInt
+): void {
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("This should be defined", []);
+  }
+
+  let index = 0;
+  let tokenCreator = asyncContract.try_uniqueTokenCreators(
+    tokenId,
+    BigInt.fromI32(index)
+  );
+  {
+    while (tokenCreator.reverted != true) {
+      token.uniqueTokenCreators = token.uniqueTokenCreators.concat([
+        tokenCreator.value,
+      ]);
+      index = index + 1;
+      tokenCreator = asyncContract.try_uniqueTokenCreators(
+        tokenId,
+        BigInt.fromI32(index)
+      );
+    }
+  }
+  token.save();
+  // iteration.individualVotes = iteration.individualVotes.concat([uniqueVoteId]);
+}
+
 function createToken(
   tokenId: BigInt,
   isMasterToken: boolean,
@@ -85,6 +127,9 @@ export function createTokensFromMasterTokenId(
     let tokenControllerObject = new TokenController(
       tokenIdIndex.toString() + "-Controller"
     );
+    tokenControllerObject.numControlLevers = BigInt.fromI32(0);
+    tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
+    tokenControllerObject.isSetup = false;
     tokenControllerObject.save();
 
     token.tokenController = tokenControllerObject.id;
