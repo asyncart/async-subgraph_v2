@@ -15,39 +15,21 @@ import {
   TokenSale,
   Transfer,
 } from "../generated/Contract/Contract";
-import { GlobalState, Artist, Bid, Token, Sale } from "../generated/schema";
+import {
+  GlobalState,
+  Bid,
+  Token,
+  Sale,
+  TokenControlLever,
+} from "../generated/schema";
 import {
   saveEventToStateChange,
   getOrInitialiseGlobalState,
   createTokensFromMasterTokenId,
   populateTokenUniqueCreators,
+  getPermissionedAddress,
+  getOrInitialiseLever,
 } from "./util";
-
-export function handleApproval(event: Approval): void {
-  let owner = event.params.owner;
-  let ownerString = owner.toHex();
-  let txTimestamp = event.block.timestamp;
-  let blockNumber = event.block.number;
-
-  let eventParamValues: Array<string> = [ownerString];
-  let eventParamNames: Array<string> = ["owner"];
-  let eventParamTypes: Array<string> = ["address"];
-
-  saveEventToStateChange(
-    event.transaction.hash,
-    txTimestamp,
-    blockNumber,
-    "Approval",
-    eventParamValues,
-    eventParamNames,
-    eventParamTypes,
-    [],
-    [],
-    0
-  );
-}
-
-export function handleApprovalForAll(event: ApprovalForAll): void {}
 
 export function handleArtistSecondSalePercentUpdated(
   event: ArtistSecondSalePercentUpdated
@@ -131,7 +113,36 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   token.save();
 }
 
-export function handleControlLeverUpdated(event: ControlLeverUpdated): void {}
+export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let priorityTip = event.params.priorityTip;
+  let numRemainingUpdates = event.params.numRemainingUpdates;
+  let leverIds = event.params.leverIds;
+  let previousValues = event.params.previousValues;
+  let updatedValues = event.params.updatedValues;
+
+  let asyncContract = Contract.bind(event.address);
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  }
+
+  // TODO: Implemenation. Waiting on this:
+  // https://github.com/graphprotocol/graph-node/issues/2011
+  for (let i = 0; i < previousValues.length; i++) {
+    let lever = getOrInitialiseLever(asyncContract, tokenId, leverIds[i]);
+    lever.save();
+  }
+
+  // Withdraw bids if finite control token
+  // Decrease number of updates if not infite
+
+  token.save();
+}
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
   log.warning("Whitelist", []);
@@ -158,13 +169,39 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
     .plus(layerCount)
     .plus(BigInt.fromI32(1));
 
-  createTokensFromMasterTokenId(asyncContract, tokenId, layerCount);
+  createTokensFromMasterTokenId(
+    asyncContract,
+    tokenId,
+    layerCount,
+    artistAddressString
+  );
 
   populateTokenUniqueCreators(asyncContract, tokenId);
   globalState.save();
 }
 
-export function handlePermissionUpdated(event: PermissionUpdated): void {}
+export function handlePermissionUpdated(event: PermissionUpdated): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let addressOfGranter = event.params.tokenOwner;
+  let permissioned = event.params.permissioned;
+
+  // Check the owner is the current owner!
+  //let asyncContract = Contract.bind(event.address);
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  }
+
+  // Only update this if called by current token owner!
+  if (addressOfGranter.toHex() == token.owner) {
+    token.permissionedAddress = permissioned;
+    token.save();
+  }
+}
 
 export function handlePlatformAddressUpdated(
   event: PlatformAddressUpdated
@@ -179,7 +216,22 @@ export function handlePlatformAddressUpdated(
 
 export function handlePlatformSalePercentageUpdated(
   event: PlatformSalePercentageUpdated
-): void {}
+): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let platformFirstPercentage = event.params.platformFirstPercentage;
+  let platformSecondPercentage = event.params.platformSecondPercentage;
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  }
+  token.platformFirstSalePercentage = platformFirstPercentage;
+  token.platformSecondSalePercentage = platformSecondPercentage;
+  token.save();
+}
 
 export function handleTokenSale(event: TokenSale): void {
   let txTimestamp = event.block.timestamp;
@@ -188,6 +240,8 @@ export function handleTokenSale(event: TokenSale): void {
   let tokenId = event.params.tokenId;
   let salePrice = event.params.salePrice;
   let buyer = event.params.buyer;
+
+  let asyncContract = Contract.bind(event.address);
 
   let token = Token.load(tokenId.toString());
   if (token == null) {
@@ -206,8 +260,10 @@ export function handleTokenSale(event: TokenSale): void {
   if (bid == null) {
     log.info("No bid exists", []);
   } else {
-    // Edge case where bid amount = set sale price?
-    if (bid.bidAmount.equals(salePrice)) {
+    if (
+      bid.bidAmount.equals(salePrice) &&
+      buyer.toHexString() == bid.bidder.toHexString()
+    ) {
       bid.bidAccepted = true;
       sale.isBidSale = true;
       sale.bidDetails = bid.id;
@@ -221,8 +277,42 @@ export function handleTokenSale(event: TokenSale): void {
   token.numberOfSales = token.numberOfSales.plus(BigInt.fromI32(1));
   token.tokenDidHaveFirstSale = true;
   token.currentBid = null;
+  // If the token get bought back and was previously permissioned, this permission remains!
+  let possiblePermissionedAddress = getPermissionedAddress(
+    asyncContract,
+    tokenId,
+    buyer
+  );
+  token.permissionedAddress = possiblePermissionedAddress;
+  // reset permissioned address.
   sale.save();
   token.save();
 }
+
+export function handleApproval(event: Approval): void {
+  let owner = event.params.owner;
+  let ownerString = owner.toHex();
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+
+  let eventParamValues: Array<string> = [ownerString];
+  let eventParamNames: Array<string> = ["owner"];
+  let eventParamTypes: Array<string> = ["address"];
+
+  saveEventToStateChange(
+    event.transaction.hash,
+    txTimestamp,
+    blockNumber,
+    "Approval",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [],
+    0
+  );
+}
+
+export function handleApprovalForAll(event: ApprovalForAll): void {}
 
 export function handleTransfer(event: Transfer): void {}

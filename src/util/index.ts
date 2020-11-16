@@ -9,8 +9,12 @@ import {
   Token,
   TokenMaster,
   TokenController,
+  User,
+  TokenControlLever,
 } from "../../generated/schema";
 import { Contract } from "../../generated/Contract/Contract";
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 ////////////////////////////////////////
 ///// GLOBAL STATE /////////////////////
@@ -43,8 +47,64 @@ export function refreshGlobalState(asyncContract: Contract): void {
 }
 
 ////////////////////////////////////////
-//////////// TOKEN /////////////////////
+//////////// USER /////////////////////
 ////////////////////////////////////////
+function createOrFetchUserBytes(userAddress: Bytes): User | null {
+  let user = User.load(userAddress.toHexString());
+  if (user == null) {
+    user = new User(userAddress.toHexString());
+  }
+
+  return user;
+}
+function createOrFetchUserString(userAddress: string): User | null {
+  let user = User.load(userAddress);
+  if (user == null) {
+    user = new User(userAddress);
+  }
+
+  return user;
+}
+
+/////////////////////////////////////////////
+//////////// NEW LEVERS /////////////////////
+/////////////////////////////////////////////
+export function getOrInitialiseLever(
+  asyncContract: Contract,
+  tokenId: BigInt,
+  leverId: BigInt
+): TokenControlLever | null {
+  // TODO: Check if it is a control and not master token
+
+  // let token = Token.load(tokenId.toString());
+  // if (token == null) {
+  //   log.critical("This should be defined", []);
+  // }
+
+  // Check it is setup
+
+  // levers only to beupdated when control token is set up
+
+  let lever = TokenControlLever.load(
+    tokenId.toString() + "-" + leverId.toString()
+  );
+  if (lever == null) {
+    lever = new TokenControlLever(
+      tokenId.toString() + "-" + leverId.toString()
+    );
+
+    // Pull value from lever if set up!
+    // THIS IS AN ISSUE: https://github.com/graphprotocol/graph-node/issues/2011
+    // Mapping does not exist, TODO !
+    let minValue = asyncContract.try_controlTokenMapping(tokenId);
+  }
+
+  return lever;
+}
+
+/////////////////////////////////////////////
+//////////// NEW TOKENS /////////////////////
+////////////////////////////////////////////
 export function populateTokenUniqueCreators(
   asyncContract: Contract,
   tokenId: BigInt
@@ -74,14 +134,40 @@ export function populateTokenUniqueCreators(
   token.save();
 }
 
+export function getPermissionedAddress(
+  asyncContract: Contract,
+  tokenId: BigInt,
+  owner: Bytes
+): Bytes | null {
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("This should be defined", []);
+  }
+
+  let permissionedAddress = asyncContract.try_permissionedControllers(
+    owner as Address,
+    tokenId
+  );
+
+  if (permissionedAddress.value.toHex() != ZERO_ADDRESS) {
+    return permissionedAddress.value;
+  } else {
+    return null;
+  }
+}
+
 function createToken(
   tokenId: BigInt,
   isMasterToken: boolean,
   platformFirstSalePercentage: BigInt,
-  platformSecondSalePercentage: BigInt
+  platformSecondSalePercentage: BigInt,
+  owner: string
 ): Token | null {
+  let newUser = createOrFetchUserString(owner);
+
   let token = new Token(tokenId.toString());
   token.tokenId = tokenId;
+  token.owner = newUser.id;
   token.isMaster = isMasterToken;
   token.platformFirstSalePercentage = platformFirstSalePercentage;
   token.platformSecondSalePercentage = platformSecondSalePercentage;
@@ -95,7 +181,8 @@ function createToken(
 export function createTokensFromMasterTokenId(
   asyncContract: Contract,
   tokenStart: BigInt,
-  layers: BigInt
+  layers: BigInt,
+  owner: string
 ): void {
   let platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
     tokenStart
@@ -109,7 +196,8 @@ export function createTokensFromMasterTokenId(
     tokenStart,
     true,
     platformFirstSalePercentage,
-    platformSecondSalePercentage
+    platformSecondSalePercentage,
+    owner
   );
 
   let tokenMasterObject = new TokenMaster(tokenStart.toString() + "-Master");
@@ -127,7 +215,8 @@ export function createTokensFromMasterTokenId(
       tokenIdIndex,
       false,
       platformFirstSalePercentage,
-      platformSecondSalePercentage
+      platformSecondSalePercentage,
+      ZERO_ADDRESS
     );
 
     let tokenControllerObject = new TokenController(
@@ -143,6 +232,9 @@ export function createTokensFromMasterTokenId(
     token.save();
   }
 }
+//////////////////////////////////////////////////
+//////////// LOAD TOKEN HOOK /////////////////////
+//////////////////////////////////////////////////
 
 ////////////////////////////////////////
 ///// STATE CHANGE HELPERS /////////////
