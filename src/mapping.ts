@@ -15,7 +15,7 @@ import {
   TokenSale,
   Transfer,
 } from "../generated/Contract/Contract";
-import { GlobalState, Artist, Bid, Token } from "../generated/schema";
+import { GlobalState, Artist, Bid, Token, Sale } from "../generated/schema";
 import {
   saveEventToStateChange,
   getOrInitialiseGlobalState,
@@ -76,7 +76,7 @@ export function handleBidProposed(event: BidProposed): void {
     log.warning("Bid on token that doesn't exist", []);
   } else {
     let bid = new Bid(tokenId.toString() + "-" + txHash.toHex());
-    bid.tokenId = tokenId;
+    bid.tokenDetails = tokenId.toString();
     bid.bidAmount = bidAmount;
     bid.bidder = bidder;
     bid.bidTimestamp = txTimestamp;
@@ -187,18 +187,30 @@ export function handleTokenSale(event: TokenSale): void {
   let txHash = event.transaction.hash;
   let tokenId = event.params.tokenId;
   let salePrice = event.params.salePrice;
+  let buyer = event.params.buyer;
 
   let token = Token.load(tokenId.toString());
   if (token == null) {
     log.critical("Token should be defined", []);
   }
 
+  let sale = new Sale(tokenId.toString() + "-" + txHash.toHex());
+  sale.tokenDetails = token.id;
+  sale.buyer = buyer;
+  sale.salePrice = salePrice;
+  sale.saleTimestamp = txTimestamp;
+  sale.tokenSaleNumber = token.numberOfSales.plus(BigInt.fromI32(1));
+  sale.isBidSale = false;
+
   let bid = Bid.load(token.currentBid);
   if (bid == null) {
     log.info("No bid exists", []);
   } else {
+    // Edge case where bid amount = set sale price?
     if (bid.bidAmount.equals(salePrice)) {
       bid.bidAccepted = true;
+      sale.isBidSale = true;
+      sale.bidDetails = bid.id;
     }
     bid.bidActive = false;
     bid.save();
@@ -209,6 +221,7 @@ export function handleTokenSale(event: TokenSale): void {
   token.numberOfSales = token.numberOfSales.plus(BigInt.fromI32(1));
   token.tokenDidHaveFirstSale = true;
   token.currentBid = null;
+  sale.save();
   token.save();
 }
 

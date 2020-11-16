@@ -52,12 +52,23 @@ type Artist @entity {
 
 type Bid @entity {
   id: ID! # tokenId - txhash
-  tokenId: BigInt!
+  tokenDetails: Token!
   bidAmount: BigInt!
   bidder: Bytes! #Change to user object
   bidTimestamp: BigInt!
   bidActive: Boolean!
   bidAccepted: Boolean!
+}
+
+type Sale @entity {
+  id: ID! # tokenId - txhash
+  tokenDetails: Token!
+  buyer: Bytes!
+  salePrice: BigInt!
+  tokenSaleNumber: BigInt! # i.e. this was the 3rd sale of this token
+  saleTimestamp: BigInt!
+  isBidSale: Boolean!
+  bidDetails: Bid
 }
 
 #####################################
