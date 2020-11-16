@@ -73,7 +73,7 @@ export function handleBidProposed(event: BidProposed): void {
 
   let token = Token.load(tokenId.toString());
   if (token == null) {
-    log.critical("This should be defined", []);
+    log.warning("Bid on token that doesn't exist", []);
   } else {
     let bid = new Bid(tokenId.toString() + "-" + txHash.toHex());
     bid.tokenId = tokenId;
@@ -108,7 +108,7 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
   } else {
     let bid = Bid.load(token.currentBid);
     if (bid == null) {
-      log.critical("Bid should be defined", []);
+      log.warning("Bid should be defined", []);
     } else {
       bid.bidActive = false;
       bid.save();
@@ -116,7 +116,20 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
   }
 }
 
-export function handleBuyPriceSet(event: BuyPriceSet): void {}
+export function handleBuyPriceSet(event: BuyPriceSet): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let buyPrice = event.params.price;
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  }
+  token.currentBuyPrice = buyPrice;
+  token.save();
+}
 
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {}
 
@@ -168,6 +181,35 @@ export function handlePlatformSalePercentageUpdated(
   event: PlatformSalePercentageUpdated
 ): void {}
 
-export function handleTokenSale(event: TokenSale): void {}
+export function handleTokenSale(event: TokenSale): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let salePrice = event.params.salePrice;
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  }
+
+  let bid = Bid.load(token.currentBid);
+  if (bid == null) {
+    log.info("No bid exists", []);
+  } else {
+    if (bid.bidAmount.equals(salePrice)) {
+      bid.bidAccepted = true;
+    }
+    bid.bidActive = false;
+    bid.save();
+  }
+
+  token.lastSalePrice = salePrice;
+  token.currentBuyPrice = BigInt.fromI32(0);
+  token.numberOfSales = token.numberOfSales.plus(BigInt.fromI32(1));
+  token.tokenDidHaveFirstSale = true;
+  token.currentBid = null;
+  token.save();
+}
 
 export function handleTransfer(event: Transfer): void {}

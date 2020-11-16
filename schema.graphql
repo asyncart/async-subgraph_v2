@@ -21,12 +21,14 @@ type Token @entity {
   lastSalePrice: BigInt!
   numberOfSales: BigInt!
   uniqueTokenCreators: [Bytes!]
+  tokenDidHaveFirstSale: Boolean!
   # Permissioned stuff here
 }
 
 type TokenMaster @entity {
   id: ID! # token id - "Master"
   layerCount: BigInt!
+  tokenDetails: Token!
 }
 
 type TokenController @entity {
@@ -34,6 +36,7 @@ type TokenController @entity {
   numControlLevers: BigInt!
   numRemainingUpdates: BigInt!
   isSetup: Boolean!
+  tokenDetails: Token!
 }
 
 type tokenControlLever @entity {
@@ -57,6 +60,9 @@ type Bid @entity {
   bidAccepted: Boolean!
 }
 
+#####################################
+####### STATE AND EVENT CHANGES #####
+#####################################
 type EventParam @entity {
   id: ID!
   index: Int!

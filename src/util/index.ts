@@ -12,6 +12,9 @@ import {
 } from "../../generated/schema";
 import { Contract } from "../../generated/Contract/Contract";
 
+////////////////////////////////////////
+///// GLOBAL STATE /////////////////////
+////////////////////////////////////////
 export function getOrInitialiseGlobalState(
   asyncContract: Contract
 ): GlobalState | null {
@@ -39,6 +42,9 @@ export function refreshGlobalState(asyncContract: Contract): void {
   globalState.save();
 }
 
+////////////////////////////////////////
+//////////// TOKEN /////////////////////
+////////////////////////////////////////
 export function populateTokenUniqueCreators(
   asyncContract: Contract,
   tokenId: BigInt
@@ -66,7 +72,6 @@ export function populateTokenUniqueCreators(
     }
   }
   token.save();
-  // iteration.individualVotes = iteration.individualVotes.concat([uniqueVoteId]);
 }
 
 function createToken(
@@ -83,8 +88,8 @@ function createToken(
   token.currentBuyPrice = BigInt.fromI32(0);
   token.lastSalePrice = BigInt.fromI32(0);
   token.numberOfSales = BigInt.fromI32(0);
+  token.tokenDidHaveFirstSale = false;
   return token;
-  //token.save();
 }
 
 export function createTokensFromMasterTokenId(
@@ -109,6 +114,7 @@ export function createTokensFromMasterTokenId(
 
   let tokenMasterObject = new TokenMaster(tokenStart.toString() + "-Master");
   tokenMasterObject.layerCount = layers;
+  tokenMasterObject.tokenDetails = masterToken.id;
   tokenMasterObject.save();
 
   masterToken.tokenMaster = tokenMasterObject.id;
@@ -130,6 +136,7 @@ export function createTokensFromMasterTokenId(
     tokenControllerObject.numControlLevers = BigInt.fromI32(0);
     tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
     tokenControllerObject.isSetup = false;
+    tokenControllerObject.tokenDetails = token.id;
     tokenControllerObject.save();
 
     token.tokenController = tokenControllerObject.id;
@@ -137,6 +144,9 @@ export function createTokensFromMasterTokenId(
   }
 }
 
+////////////////////////////////////////
+///// STATE CHANGE HELPERS /////////////
+////////////////////////////////////////
 export function getOrInitialiseStateChange(txId: string): StateChange | null {
   let stateChange = StateChange.load(txId);
   if (stateChange == null) {
