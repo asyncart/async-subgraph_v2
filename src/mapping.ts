@@ -28,7 +28,7 @@ import {
   createTokensFromMasterTokenId,
   populateTokenUniqueCreators,
   getPermissionedAddress,
-  getOrInitialiseLever,
+  getOrInitialiseToken,
 } from "./util";
 
 export function handleArtistSecondSalePercentUpdated(
@@ -53,7 +53,8 @@ export function handleBidProposed(event: BidProposed): void {
   let bidAmount = event.params.bidAmount;
   let bidder = event.params.bidder;
 
-  let token = Token.load(tokenId.toString());
+  let asyncContract = Contract.bind(event.address);
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.warning("Bid on token that doesn't exist", []);
   } else {
@@ -84,7 +85,8 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
   let txHash = event.transaction.hash;
   let tokenId = event.params.tokenId;
 
-  let token = Token.load(tokenId.toString());
+  let asyncContract = Contract.bind(event.address);
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
   } else {
@@ -105,7 +107,9 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   let tokenId = event.params.tokenId;
   let buyPrice = event.params.price;
 
-  let token = Token.load(tokenId.toString());
+  let asyncContract = Contract.bind(event.address);
+
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
   }
@@ -126,25 +130,19 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
 
   let asyncContract = Contract.bind(event.address);
 
-  let token = Token.load(tokenId.toString());
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
   }
 
-  // TODO: Implemenation. Waiting on this:
-  // https://github.com/graphprotocol/graph-node/issues/2011
   for (let i = 0; i < previousValues.length; i++) {
-    let lever = getOrInitialiseLever(asyncContract, tokenId, leverIds[i]);
-    // TODO: Get min and max when possible....
-
+    let lever = TokenControlLever.load(
+      tokenId.toString() + "-" + leverIds[i].toString()
+    );
     lever.previousValue = previousValues[i];
     lever.currentValue = updatedValues[i];
     lever.save();
   }
-  // Lots to do here!
-
-  // Withdraw bids if finite control token
-  // Decrease number of updates if not infite
 
   token.save();
 }
@@ -193,10 +191,8 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
   let addressOfGranter = event.params.tokenOwner;
   let permissioned = event.params.permissioned;
 
-  // Check the owner is the current owner!
-  //let asyncContract = Contract.bind(event.address);
-
-  let token = Token.load(tokenId.toString());
+  let asyncContract = Contract.bind(event.address);
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
   }
@@ -229,7 +225,8 @@ export function handlePlatformSalePercentageUpdated(
   let platformFirstPercentage = event.params.platformFirstPercentage;
   let platformSecondPercentage = event.params.platformSecondPercentage;
 
-  let token = Token.load(tokenId.toString());
+  let asyncContract = Contract.bind(event.address);
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
   }
@@ -248,7 +245,7 @@ export function handleTokenSale(event: TokenSale): void {
 
   let asyncContract = Contract.bind(event.address);
 
-  let token = Token.load(tokenId.toString());
+  let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
   }
