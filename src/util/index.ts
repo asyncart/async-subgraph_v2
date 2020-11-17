@@ -67,51 +67,17 @@ function createOrFetchUserString(userAddress: string): User | null {
 }
 
 /////////////////////////////////////////////
-//////////// NEW LEVERS /////////////////////
-/////////////////////////////////////////////
-export function getOrInitialiseLever(
-  asyncContract: Contract,
-  tokenId: BigInt,
-  leverId: BigInt
-): TokenControlLever | null {
-  // TODO: Check if it is a control and not master token
-
-  // let token = Token.load(tokenId.toString());
-  // if (token == null) {
-  //   log.critical("This should be defined", []);
-  // }
-
-  // Check it is setup
-
-  // levers only to beupdated when control token is set up
-
-  let lever = TokenControlLever.load(
-    tokenId.toString() + "-" + leverId.toString()
-  );
-  if (lever == null) {
-    lever = new TokenControlLever(
-      tokenId.toString() + "-" + leverId.toString()
-    );
-
-    // Pull value from lever if set up!
-    // THIS IS AN ISSUE: https://github.com/graphprotocol/graph-node/issues/2011
-    // Mapping does not exist, TODO !
-    let minValue = asyncContract.try_controlTokenMapping(tokenId);
-  }
-
-  return lever;
-}
-
-/////////////////////////////////////////////
-//////////// NEW TOKENS /////////////////////
+//////////// TOKEN HELPERS /////////////////
 ////////////////////////////////////////////
+
+// Returns true if tokenCreatorsExist and were populated
 export function populateTokenUniqueCreators(
   asyncContract: Contract,
   tokenId: BigInt
-): void {
+): boolean {
   let token = Token.load(tokenId.toString());
   if (token == null) {
-    log.critical("This should be defined", []);
+    log.warning("This should be defined", []);
   }
 
   let index = 0;
@@ -132,6 +98,12 @@ export function populateTokenUniqueCreators(
     }
   }
   token.save();
+
+  if (index > 0) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 export function getPermissionedAddress(
@@ -156,6 +128,10 @@ export function getPermissionedAddress(
   }
 }
 
+/////////////////////////////////////////////
+//////////// CREATE TOKENS /////////////////////
+////////////////////////////////////////////
+
 function createToken(
   tokenId: BigInt,
   isMasterToken: boolean,
@@ -178,6 +154,56 @@ function createToken(
   return token;
 }
 
+function createMaster(
+  tokenId: BigInt,
+  platformFirstSalePercentage: BigInt,
+  platformSecondSalePercentage: BigInt,
+  owner: string,
+  layers: BigInt
+): Token | null {
+  let masterToken = createToken(
+    tokenId,
+    true,
+    platformFirstSalePercentage,
+    platformSecondSalePercentage,
+    owner
+  );
+
+  let tokenMasterObject = new TokenMaster(tokenId.toString() + "-Master");
+  tokenMasterObject.layerCount = layers;
+  tokenMasterObject.tokenDetails = masterToken.id;
+  tokenMasterObject.save();
+
+  masterToken.tokenMaster = tokenMasterObject.id;
+  return masterToken;
+}
+
+function createController(
+  tokenId: BigInt,
+  platformFirstSalePercentage: BigInt,
+  platformSecondSalePercentage: BigInt
+): Token | null {
+  let token = createToken(
+    tokenId,
+    false,
+    platformFirstSalePercentage,
+    platformSecondSalePercentage,
+    ZERO_ADDRESS
+  );
+
+  let tokenControllerObject = new TokenController(
+    tokenId.toString() + "-Controller"
+  );
+  tokenControllerObject.numControlLevers = BigInt.fromI32(0);
+  tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
+  tokenControllerObject.isSetup = false;
+  tokenControllerObject.tokenDetails = token.id;
+  tokenControllerObject.save();
+
+  token.tokenController = tokenControllerObject.id;
+  return token;
+}
+
 export function createTokensFromMasterTokenId(
   asyncContract: Contract,
   tokenStart: BigInt,
@@ -192,49 +218,223 @@ export function createTokensFromMasterTokenId(
   );
 
   // Create the master token
-  let masterToken = createToken(
+  let masterToken = createMaster(
     tokenStart,
-    true,
     platformFirstSalePercentage,
     platformSecondSalePercentage,
-    owner
+    owner,
+    layers
   );
-
-  let tokenMasterObject = new TokenMaster(tokenStart.toString() + "-Master");
-  tokenMasterObject.layerCount = layers;
-  tokenMasterObject.tokenDetails = masterToken.id;
-  tokenMasterObject.save();
-
-  masterToken.tokenMaster = tokenMasterObject.id;
   masterToken.save();
 
   for (let index = 0; index < layers.toI32(); index++) {
-    log.warning("How many times am I called", []);
     let tokenIdIndex = tokenStart.plus(BigInt.fromI32(index + 1));
-    let token = createToken(
+    let token = createController(
       tokenIdIndex,
-      false,
       platformFirstSalePercentage,
-      platformSecondSalePercentage,
-      ZERO_ADDRESS
+      platformSecondSalePercentage
     );
-
-    let tokenControllerObject = new TokenController(
-      tokenIdIndex.toString() + "-Controller"
-    );
-    tokenControllerObject.numControlLevers = BigInt.fromI32(0);
-    tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
-    tokenControllerObject.isSetup = false;
-    tokenControllerObject.tokenDetails = token.id;
-    tokenControllerObject.save();
-
-    token.tokenController = tokenControllerObject.id;
     token.save();
   }
 }
 //////////////////////////////////////////////////
 //////////// LOAD TOKEN HOOK /////////////////////
 //////////////////////////////////////////////////
+
+// Trade off - do we have different initialization token functions
+// for different events for effciency?
+// Certain events being fired will give us certain garuntees etc.
+export function getOrInitialiseToken(
+  asyncContract: Contract,
+  tokenId: BigInt
+): Token | null {
+  // If it exists, could be just whitelisted, or minting / control setup could have happened.
+  // Depending on what type of token it is.
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    // This logic will only execute the first time we become aware of a v1 token!
+    // Or when a token does not yet exist or whitelisted
+
+    // First check if token actually exists
+    // Rare case 1: Could be a token that doesn't at all exist if i.e. grantControlPermission called.
+    let tokenCreator = asyncContract.try_uniqueTokenCreators(
+      tokenId,
+      BigInt.fromI32(0)
+    );
+    if (tokenCreator.reverted) {
+      log.warning("Token does not exist and not whitelisted!", []);
+      return null;
+    }
+
+    // otherwise it exists lets create the token depending on what type of token it is.
+    let data = asyncContract.try_controlTokenMapping(tokenId);
+
+    // If its a control token
+    if (data.value.value2) {
+      // control token
+      token = createController(tokenId, BigInt.fromI32(0), BigInt.fromI32(0));
+    } else {
+      //otherwise intialize a master token
+      token = createMaster(
+        tokenId,
+        BigInt.fromI32(0),
+        BigInt.fromI32(0),
+        ZERO_ADDRESS, // need to get and set owner!
+        BigInt.fromI32(0) // get layers sometime!!!!
+      );
+    }
+    token.save();
+
+    populateTokenUniqueCreators(asyncContract, tokenId);
+
+    // Populate the rest
+    token = populateTokenHelper(asyncContract, tokenId, token);
+  } else {
+    // If its already been pulled and set up, just return it! First most common case!
+    // If its creator is populated, that means it has been minted and set up
+    if (token.uniqueTokenCreators != null) {
+      return token;
+    }
+
+    // Otherwise checking if its been minted
+    let hasBeenMinted = populateTokenUniqueCreators(asyncContract, tokenId);
+
+    // Nothing more to pull from the contract if it hasn't been minted
+    if (!hasBeenMinted) {
+      log.warning("Token is ONLY whitelisted!", []);
+      return token;
+    }
+
+    // Populate token data
+    token = populateTokenHelper(asyncContract, tokenId, token);
+  }
+
+  // Refresh first sale requirement!? Incase waivered function called?
+  return token;
+}
+
+function populateTokenHelper(
+  asyncContract: Contract,
+  tokenId: BigInt,
+  token: Token
+): Token | null {
+  // Populate owner
+  // TODO: Owner may not be creator for V1 tokens caution!
+  let tokenCreator = asyncContract.uniqueTokenCreators(
+    tokenId,
+    BigInt.fromI32(0)
+  );
+  let user = createOrFetchUserBytes(tokenCreator);
+  token.owner = user.id;
+  user.save();
+
+  // Populate currentBid
+  // NOTE THIS will be populated by handler. No need to pull
+
+  // Populate Sale percentages
+  token.platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
+    tokenId
+  );
+  token.platformSecondSalePercentage = asyncContract.platformSecondSalePercentages(
+    tokenId
+  );
+
+  // Populate current buy price.
+  // NOTE THIS will be populated by handler. No need to pull
+
+  // Last sale price
+  // Cannot populate
+
+  // Number of sales
+  // Cannot populate
+
+  // Unique token creators
+  // All ready populated by populateTokenUniqueCreators function.
+
+  // TokenDidHaveFirstSale
+  token.tokenDidHaveFirstSale = asyncContract.tokenDidHaveFirstSale(tokenId);
+
+  if (token.isMaster) {
+    // Set the amount of layers etc
+  } else {
+    // If its a controller token, few more things to set up
+    // set up all the layers etc
+  }
+
+  // permissioned address
+  // Will be done by handler
+  // Only edge case is permission given before token exists
+  // In which case we should try get permissions below
+  // token.permissionedAddress = getPermissionedAddress(
+  //   asyncContract,
+  //   tokenId,
+  //   token.owner // cast to bytes
+  // );
+
+  return token;
+}
+
+// TODO: Finish and save
+function pullAndSaveControlTokenData(
+  asyncContract: Contract,
+  controlToken: TokenController,
+  tokenId: BigInt
+): void {
+  // Will this revert if mapping does not exist
+  let data = asyncContract.try_controlTokenMapping(tokenId);
+
+  controlToken.numControlLevers = data.value.value0;
+  controlToken.numRemainingUpdates = data.value.value1;
+  controlToken.isSetup = data.value.value3;
+  //controlToken.tokenDetails = tokenId;
+
+  controlToken.save();
+}
+
+// TODO: finish and save
+function pullAndSaveMasterTokenData(
+  asyncContract: Contract,
+  masterToken: TokenMaster,
+  tokenId: BigInt
+): void {
+  // Will this revert if mapping does not exist
+  let data = asyncContract.try_creatorWhitelist(tokenId);
+
+  // also get creator
+  masterToken.layerCount = data.value.value1;
+  masterToken.save();
+}
+
+/////////////////////////////////////////////
+//////////// NEW LEVERS /////////////////////
+/////////////////////////////////////////////
+export function getOrInitialiseLever(
+  asyncContract: Contract,
+  tokenId: BigInt,
+  leverId: BigInt
+): TokenControlLever | null {
+  // TODO: Check if it is a control and not master token
+
+  // levers only to be updated when control token is set up
+  let lever = TokenControlLever.load(
+    tokenId.toString() + "-" + leverId.toString()
+  );
+  if (lever == null) {
+    lever = new TokenControlLever(
+      tokenId.toString() + "-" + leverId.toString()
+    );
+    lever.minValue = BigInt.fromI32(0);
+    lever.maxValue = BigInt.fromI32(0);
+    lever.currentValue = BigInt.fromI32(0);
+    lever.previousValue = BigInt.fromI32(0);
+
+    // Pull value from lever if set up!
+    // THIS IS AN ISSUE: https://github.com/graphprotocol/graph-node/issues/2011
+    // Mapping does not exist, TODO !
+    //let data = asyncContract.try_controlTokenMapping(tokenId);
+  }
+  return lever;
+}
 
 ////////////////////////////////////////
 ///// STATE CHANGE HELPERS /////////////

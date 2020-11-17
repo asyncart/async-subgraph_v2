@@ -39,7 +39,7 @@ export function handleArtistSecondSalePercentUpdated(
   let globalState = getOrInitialiseGlobalState(asyncContract);
 
   // Testing purposes
-  populateTokenUniqueCreators(asyncContract, BigInt.fromI32(1));
+  // populateTokenUniqueCreators(asyncContract, BigInt.fromI32(1));
 
   globalState.artistSecondSalePercentage = newSecondPercentage;
   globalState.save();
@@ -135,8 +135,13 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   // https://github.com/graphprotocol/graph-node/issues/2011
   for (let i = 0; i < previousValues.length; i++) {
     let lever = getOrInitialiseLever(asyncContract, tokenId, leverIds[i]);
+    // TODO: Get min and max when possible....
+
+    lever.previousValue = previousValues[i];
+    lever.currentValue = updatedValues[i];
     lever.save();
   }
+  // Lots to do here!
 
   // Withdraw bids if finite control token
   // Decrease number of updates if not infite
@@ -176,7 +181,7 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
     artistAddressString
   );
 
-  populateTokenUniqueCreators(asyncContract, tokenId);
+  //populateTokenUniqueCreators(asyncContract, tokenId);
   globalState.save();
 }
 

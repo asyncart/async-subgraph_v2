@@ -45,6 +45,7 @@ type TokenControlLever @entity {
   minValue: BigInt!
   maxValue: BigInt!
   currentValue: BigInt!
+  previousValue: BigInt!
 }
 
 type User @entity {
