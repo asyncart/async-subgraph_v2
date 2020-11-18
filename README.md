@@ -7,6 +7,12 @@ yarn && cd async-contracts && yarn && cd ..
 
 ### Local development and testing
 
+Install:
+
+```bash
+make install
+```
+
 Run:
 
 ```bash

@@ -7,10 +7,33 @@
     "deploy": "graph deploy --node https://api.thegraph.com/deploy/ --ipfs https://api.thegraph.com/ipfs/ avolabs-io/async_art_v2",
     "create-local": "graph create --node http://127.0.0.1:8020/ avolabs-io/async-subgraph_v2",
     "remove-local": "graph remove --node http://127.0.0.1:8020/ avolabs-io/async-subgraph_v2",
-    "deploy-local": "graph deploy --node http://127.0.0.1:8020/ --ipfs http://127.0.0.1:5001 avolabs-io/async-subgraph_v2"
+    "deploy-local": "graph deploy --node http://127.0.0.1:8020/ --ipfs http://127.0.0.1:5001 avolabs-io/async-subgraph_v2",
+    "test": "jest",
+    "test:build": "bsb -make-world",
+    "test:watch": "bsb -make-world -w",
+    "test:clean": "bsb -clean-world"
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "0.17.1",
     "@graphprotocol/graph-ts": "0.17.0"
+  },
+  "devDependencies": {
+    "bs-platform": "^8.3.3",
+    "jest": "^26.6.3",
+    "reason-test-framework": "^0.3.2"
+  },
+  "jest": {
+    "moduleDirectories": [
+      "node_modules"
+    ],
+    "roots": [
+      "tests"
+    ],
+    "testMatch": [
+      "**/*__test.bs.js"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(bs-platform|reason-react|reason-react-compat|reason-react-update|bs-webapi|bs-css|bs-css-emotion)/)"
+    ]
   }
 }

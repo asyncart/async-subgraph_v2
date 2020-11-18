@@ -4,3 +4,7 @@ generated
 contracts
 data
 ganache-data
+tests/__snapshots__
+yarn-error.log
+lib
+.merlin

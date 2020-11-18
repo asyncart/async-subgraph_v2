@@ -1,3 +1,8 @@
+.PHONY: install
+install:
+	yarn
+	cd async-contracts; yarn
+
 .PHONY: clear-data
 clear-data:
 	sudo rm -rf data ganache-data
