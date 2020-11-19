@@ -112,6 +112,14 @@ type Sale @entity {
   bidDetails: Bid
 }
 
+type TokenTransfer @entity {
+  id: ID! # tokenId - tx timestamp
+  tokenDetails: Token!
+  to: User!
+  from: User!
+  timestamp: BigInt!
+}
+
 #####################################
 ####### STATE AND EVENT CHANGES #####
 #####################################

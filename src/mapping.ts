@@ -24,6 +24,7 @@ import {
   User,
   LayerUpdate,
   TokenController,
+  TokenTransfer,
 } from "../generated/schema";
 import {
   saveEventToStateChange,
@@ -353,6 +354,59 @@ export function handleTokenSale(event: TokenSale): void {
   linkMasterAndControllers(tokenId);
 }
 
+export function handleTransfer(event: Transfer): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
+  let txHash = event.transaction.hash;
+  let tokenId = event.params.tokenId;
+  let _from = event.params.from;
+  let _to = event.params.to;
+
+  let asyncContract = Contract.bind(event.address);
+  // Hooks to update state from contract
+  refreshGlobalState(asyncContract);
+
+  // Double check ordering here.
+  let to = createOrFetchUserString(_to.toHexString());
+  let token = getOrInitialiseToken(asyncContract, tokenId);
+  let from = createOrFetchUserString(_from.toHexString());
+
+  if (token == null) {
+    log.critical("Token should be defined", []);
+  }
+
+  let transfer = new TokenTransfer(
+    tokenId.toString() + "-" + txHash.toString()
+  );
+  transfer.tokenDetails = token.id;
+  transfer.to = to.id;
+  transfer.from = from.id;
+  transfer.timestamp = txTimestamp;
+
+  let possiblePermissionedAddress = getPermissionedAddress(
+    asyncContract,
+    tokenId,
+    _to
+  );
+  token.permissionedAddress = possiblePermissionedAddress;
+  token.owner = to.id;
+
+  // Careful if they have already owned it! Don't add duplicate item
+  if (token.isMaster) {
+    to.ownedMasters = to.ownedMasters.concat([token.id + "-Master"]);
+  } else {
+    to.ownerControllers = to.ownerControllers.concat([
+      token.id + "-Controller",
+    ]);
+  }
+
+  to.save();
+  from.save();
+  transfer.save();
+  token.save();
+  linkMasterAndControllers(tokenId);
+}
+
 export function handleApproval(event: Approval): void {
   // let owner = event.params.owner;
   // let ownerString = owner.toHex();
@@ -376,5 +430,3 @@ export function handleApproval(event: Approval): void {
 }
 
 export function handleApprovalForAll(event: ApprovalForAll): void {}
-
-export function handleTransfer(event: Transfer): void {}
