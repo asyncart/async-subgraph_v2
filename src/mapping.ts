@@ -21,6 +21,7 @@ import {
   Token,
   Sale,
   TokenControlLever,
+  User,
 } from "../generated/schema";
 import {
   saveEventToStateChange,
@@ -29,6 +30,9 @@ import {
   populateTokenUniqueCreators,
   getPermissionedAddress,
   getOrInitialiseToken,
+  refreshGlobalState,
+  createOrFetchUserString,
+  linkMasterAndControllers,
 } from "./util";
 
 export function handleArtistSecondSalePercentUpdated(
@@ -37,9 +41,6 @@ export function handleArtistSecondSalePercentUpdated(
   let newSecondPercentage = event.params.artistSecondPercentage;
   let asyncContract = Contract.bind(event.address);
   let globalState = getOrInitialiseGlobalState(asyncContract);
-
-  // Testing purposes
-  // populateTokenUniqueCreators(asyncContract, BigInt.fromI32(1));
 
   globalState.artistSecondSalePercentage = newSecondPercentage;
   globalState.save();
@@ -54,14 +55,20 @@ export function handleBidProposed(event: BidProposed): void {
   let bidder = event.params.bidder;
 
   let asyncContract = Contract.bind(event.address);
+  // Hooks to update state from contract
+  linkMasterAndControllers(asyncContract, tokenId);
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  globalState.save();
+
   let token = getOrInitialiseToken(asyncContract, tokenId);
+  let user = createOrFetchUserString(bidder.toHexString());
   if (token == null) {
     log.warning("Bid on token that doesn't exist", []);
   } else {
     let bid = new Bid(tokenId.toString() + "-" + txHash.toHex());
     bid.tokenDetails = tokenId.toString();
     bid.bidAmount = bidAmount;
-    bid.bidder = bidder;
+    bid.bidder = user.id;
     bid.bidTimestamp = txTimestamp;
     bid.bidActive = true;
     bid.bidAccepted = false;
@@ -72,8 +79,10 @@ export function handleBidProposed(event: BidProposed): void {
       oldBid.save();
     }
 
+    user.bids = user.bids.concat([bid.id]);
     token.currentBid = bid.id;
 
+    user.save();
     token.save();
     bid.save();
   }
@@ -86,6 +95,8 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
   let tokenId = event.params.tokenId;
 
   let asyncContract = Contract.bind(event.address);
+  refreshGlobalState(asyncContract);
+
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
@@ -95,6 +106,7 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
       log.warning("Bid should be defined", []);
     } else {
       bid.bidActive = false;
+      bid.BidWithdrawnTimestamp = txTimestamp;
       bid.save();
     }
   }
@@ -108,6 +120,9 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   let buyPrice = event.params.price;
 
   let asyncContract = Contract.bind(event.address);
+  // Hooks to update state from contract
+  linkMasterAndControllers(asyncContract, tokenId);
+  refreshGlobalState(asyncContract);
 
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
@@ -129,6 +144,7 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   let updatedValues = event.params.updatedValues;
 
   let asyncContract = Contract.bind(event.address);
+  refreshGlobalState(asyncContract);
 
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
@@ -158,13 +174,6 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
   let artistAddressString = creator.toHex();
 
   let asyncContract = Contract.bind(event.address);
-  let platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
-    tokenId
-  );
-  let platformSecondSalePercentage = asyncContract.platformSecondSalePercentages(
-    tokenId
-  );
-
   let globalState = getOrInitialiseGlobalState(asyncContract);
 
   globalState.latestMasterTokenId = tokenId;
@@ -172,15 +181,9 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
     .plus(layerCount)
     .plus(BigInt.fromI32(1));
 
-  createTokensFromMasterTokenId(
-    asyncContract,
-    tokenId,
-    layerCount,
-    artistAddressString
-  );
-
-  //populateTokenUniqueCreators(asyncContract, tokenId);
   globalState.save();
+
+  createTokensFromMasterTokenId(asyncContract, tokenId, layerCount);
 }
 
 export function handlePermissionUpdated(event: PermissionUpdated): void {
@@ -192,6 +195,11 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
   let permissioned = event.params.permissioned;
 
   let asyncContract = Contract.bind(event.address);
+  // Hooks to update state from contract
+  linkMasterAndControllers(asyncContract, tokenId);
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  globalState.save();
+
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
@@ -226,6 +234,10 @@ export function handlePlatformSalePercentageUpdated(
   let platformSecondPercentage = event.params.platformSecondPercentage;
 
   let asyncContract = Contract.bind(event.address);
+  // Hooks to update state from contract
+  linkMasterAndControllers(asyncContract, tokenId);
+  refreshGlobalState(asyncContract);
+
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.critical("Token should be defined", []);
@@ -241,31 +253,36 @@ export function handleTokenSale(event: TokenSale): void {
   let txHash = event.transaction.hash;
   let tokenId = event.params.tokenId;
   let salePrice = event.params.salePrice;
-  let buyer = event.params.buyer;
+  let _buyer = event.params.buyer;
 
   let asyncContract = Contract.bind(event.address);
+  // Hooks to update state from contract
+  linkMasterAndControllers(asyncContract, tokenId);
+  refreshGlobalState(asyncContract);
 
+  let buyer = createOrFetchUserString(_buyer.toHexString());
   let token = getOrInitialiseToken(asyncContract, tokenId);
+  let seller = User.load(token.owner);
+
   if (token == null) {
     log.critical("Token should be defined", []);
   }
+  let tokenSaleNumber = token.numberOfSales.plus(BigInt.fromI32(1));
 
-  let sale = new Sale(tokenId.toString() + "-" + txHash.toHex());
+  let sale = new Sale(tokenId.toString() + "-" + tokenSaleNumber.toString());
   sale.tokenDetails = token.id;
-  sale.buyer = buyer;
+  sale.buyer = buyer.id;
+  sale.seller = seller.id;
   sale.salePrice = salePrice;
   sale.saleTimestamp = txTimestamp;
-  sale.tokenSaleNumber = token.numberOfSales.plus(BigInt.fromI32(1));
+  sale.tokenSaleNumber = tokenSaleNumber;
   sale.isBidSale = false;
 
   let bid = Bid.load(token.currentBid);
   if (bid == null) {
     log.info("No bid exists", []);
   } else {
-    if (
-      bid.bidAmount.equals(salePrice) &&
-      buyer.toHexString() == bid.bidder.toHexString()
-    ) {
+    if (bid.bidAmount.equals(salePrice) && _buyer.toHexString() == bid.bidder) {
       bid.bidAccepted = true;
       sale.isBidSale = true;
       sale.bidDetails = bid.id;
@@ -274,6 +291,7 @@ export function handleTokenSale(event: TokenSale): void {
     bid.save();
   }
 
+  token.owner = buyer.id;
   token.lastSalePrice = salePrice;
   token.currentBuyPrice = BigInt.fromI32(0);
   token.numberOfSales = token.numberOfSales.plus(BigInt.fromI32(1));
@@ -283,10 +301,24 @@ export function handleTokenSale(event: TokenSale): void {
   let possiblePermissionedAddress = getPermissionedAddress(
     asyncContract,
     tokenId,
-    buyer
+    _buyer
   );
   token.permissionedAddress = possiblePermissionedAddress;
-  // reset permissioned address.
+
+  // If they buy this back, will it be a duplicate
+  if (token.isMaster) {
+    buyer.ownedMasters = buyer.ownedMasters.concat([token.id + "-Master"]);
+  } else {
+    buyer.ownerControllers = buyer.ownerControllers.concat([
+      token.id + "-Controller",
+    ]);
+  }
+
+  buyer.buys = buyer.buys.concat([sale.id]);
+  seller.sells = seller.sells.concat([sale.id]);
+
+  buyer.save();
+  seller.save();
   sale.save();
   token.save();
 }

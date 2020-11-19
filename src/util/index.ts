@@ -26,7 +26,7 @@ export function getOrInitialiseGlobalState(
   if (globalState == null) {
     globalState = new GlobalState("MASTER");
     globalState.latestMasterTokenId = BigInt.fromI32(0);
-    globalState.currentExpectedTokenSupply = BigInt.fromI32(0);
+    globalState.currentExpectedTokenSupply = asyncContract.expectedTokenSupply();
     globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
     globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
     globalState.platformAddress = asyncContract.platformAddress();
@@ -50,17 +50,14 @@ export function refreshGlobalState(asyncContract: Contract): void {
 //////////// USER /////////////////////
 ////////////////////////////////////////
 function createOrFetchUserBytes(userAddress: Bytes): User | null {
-  let user = User.load(userAddress.toHexString());
-  if (user == null) {
-    user = new User(userAddress.toHexString());
-  }
-
-  return user;
+  return createOrFetchUserString(userAddress.toHexString());
 }
-function createOrFetchUserString(userAddress: string): User | null {
+
+export function createOrFetchUserString(userAddress: string): User | null {
   let user = User.load(userAddress);
   if (user == null) {
     user = new User(userAddress);
+    user.isArtist = false;
   }
 
   return user;
@@ -89,9 +86,22 @@ export function populateTokenUniqueCreators(
   {
     while (tokenCreator.reverted != true) {
       if (tokenCreator.value.toHexString() != ZERO_ADDRESS) {
-        token.uniqueTokenCreators = token.uniqueTokenCreators.concat([
-          tokenCreator.value,
-        ]);
+        // Get the user
+        let user = createOrFetchUserBytes(tokenCreator.value);
+        token.uniqueTokenCreators = token.uniqueTokenCreators.concat([user.id]);
+        user.isArtist = true;
+        if (token.isMaster) {
+          user.createdMasters = user.createdMasters.concat([
+            token.id + "-Master",
+          ]);
+        } else {
+          user.createdControllers = user.createdControllers.concat([
+            token.id + "-Controller",
+          ]);
+        }
+        user.save();
+
+        // Try get next artist
         index = index + 1;
         tokenCreator = asyncContract.try_uniqueTokenCreators(
           tokenId,
@@ -133,6 +143,43 @@ export function getPermissionedAddress(
   }
 }
 
+// Check with conlan this is how previous tokens behaved
+// Assume this is the same
+export function linkMasterAndControllers(
+  asyncContract: Contract,
+  tokenId: BigInt
+): void {
+  // Function links master to layers and visa versa
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("This should be defined", []);
+  }
+  if (token.isMaster) {
+    let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
+    if (tokenMaster == null) {
+      log.critical("This should be defined", []);
+    }
+    if (tokenMaster.layers == null) {
+      // Lets try populate if all the layers exist!
+      for (let i = 0; i < tokenMaster.layerCount.toI32(); i++) {
+        let tokenController = TokenController.load(
+          tokenId.plus(BigInt.fromI32(i + 1)).toString() + "-Controller"
+        );
+        if (tokenController == null) {
+          log.warning("Layer not around yet", []);
+          return;
+        }
+        tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
+        tokenController.associatedMasterToken = tokenMaster.id;
+        tokenController.save();
+      }
+      tokenMaster.save();
+    }
+  }
+  // Function links master to layers and visa versa
+}
+
 /////////////////////////////////////////////
 //////////// CREATE TOKENS /////////////////////
 ////////////////////////////////////////////
@@ -141,14 +188,10 @@ function createToken(
   tokenId: BigInt,
   isMasterToken: boolean,
   platformFirstSalePercentage: BigInt,
-  platformSecondSalePercentage: BigInt,
-  owner: string
+  platformSecondSalePercentage: BigInt
 ): Token | null {
-  let newUser = createOrFetchUserString(owner);
-
   let token = new Token(tokenId.toString());
   token.tokenId = tokenId;
-  token.owner = newUser.id;
   token.isMaster = isMasterToken;
   token.platformFirstSalePercentage = platformFirstSalePercentage;
   token.platformSecondSalePercentage = platformSecondSalePercentage;
@@ -163,15 +206,13 @@ function createMaster(
   tokenId: BigInt,
   platformFirstSalePercentage: BigInt,
   platformSecondSalePercentage: BigInt,
-  owner: string,
   layers: BigInt
 ): Token | null {
   let masterToken = createToken(
     tokenId,
     true,
     platformFirstSalePercentage,
-    platformSecondSalePercentage,
-    owner
+    platformSecondSalePercentage
   );
 
   let tokenMasterObject = new TokenMaster(tokenId.toString() + "-Master");
@@ -186,14 +227,14 @@ function createMaster(
 function createController(
   tokenId: BigInt,
   platformFirstSalePercentage: BigInt,
-  platformSecondSalePercentage: BigInt
+  platformSecondSalePercentage: BigInt,
+  masterTokenId: BigInt = BigInt.fromI32(0)
 ): Token | null {
   let token = createToken(
     tokenId,
     false,
     platformFirstSalePercentage,
-    platformSecondSalePercentage,
-    ZERO_ADDRESS
+    platformSecondSalePercentage
   );
 
   let tokenControllerObject = new TokenController(
@@ -203,6 +244,10 @@ function createController(
   tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
   tokenControllerObject.isSetup = false;
   tokenControllerObject.tokenDetails = token.id;
+  if (!masterTokenId.equals(BigInt.fromI32(0))) {
+    tokenControllerObject.associatedMasterToken =
+      masterTokenId.toString() + "-Master";
+  }
   tokenControllerObject.save();
 
   token.tokenController = tokenControllerObject.id;
@@ -212,8 +257,7 @@ function createController(
 export function createTokensFromMasterTokenId(
   asyncContract: Contract,
   tokenStart: BigInt,
-  layers: BigInt,
-  owner: string
+  layers: BigInt
 ): void {
   let platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
     tokenStart
@@ -227,21 +271,26 @@ export function createTokensFromMasterTokenId(
     tokenStart,
     platformFirstSalePercentage,
     platformSecondSalePercentage,
-    owner,
     layers
   );
   masterToken.save();
+
+  let masterTokenObject = TokenMaster.load(tokenStart.toString() + "-Master");
 
   for (let index = 0; index < layers.toI32(); index++) {
     let tokenIdIndex = tokenStart.plus(BigInt.fromI32(index + 1));
     let token = createController(
       tokenIdIndex,
       platformFirstSalePercentage,
-      platformSecondSalePercentage
+      platformSecondSalePercentage,
+      tokenStart
     );
     token.save();
+    masterTokenObject.layers = masterTokenObject.layers.concat([token.id]);
   }
+  masterTokenObject.save();
 }
+
 //////////////////////////////////////////////////
 //////////// LOAD TOKEN HOOK /////////////////////
 //////////////////////////////////////////////////
@@ -253,52 +302,64 @@ export function getOrInitialiseToken(
   asyncContract: Contract,
   tokenId: BigInt
 ): Token | null {
+  // Shift this check to only function that needs it
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  if (globalState.currentExpectedTokenSupply.lt(tokenId)) {
+    // This can only really happen on permission function
+    log.warning("SOMEONE CALLING STUFF ON NON_EXISTANT TOKEN!", []);
+    return null;
+  }
+
   // If it exists, could be just whitelisted, or minting / control setup could have happened.
   // Depending on what type of token it is.
   let token = Token.load(tokenId.toString());
   if (token == null) {
-    // This logic will only execute the first time we become aware of a v1 token!
-    // Or when a token does not yet exist or whitelisted
+    // This logic will only execute the first time we become aware of a v1 token or normal token!
 
-    // First check if token actually exists
-    // Rare case 1: Could be a token that doesn't at all exist if i.e. grantControlPermission called.
+    // If this passes it means the associated master has been minted
     let tokenCreator = asyncContract.try_uniqueTokenCreators(
       tokenId,
       BigInt.fromI32(0)
     );
     if (tokenCreator.reverted) {
-      log.warning("Token does not exist and not whitelisted!", []);
+      // token is only whitelisted. If master, its not minted. If Controller master and itself both not minted
+      // Handle this case! For now assume its only whitelisted!
+      log.warning("Token is currently ONLY whitelisted", []);
       return null;
     }
 
     // otherwise it exists lets create the token depending on what type of token it is.
-    // Will this error or have defaults.
-    let data = asyncContract.try_controlTokenMapping(tokenId);
+    // Checking if its a control or mater
+    let data = asyncContract.controlTokenMapping(tokenId);
+    let exists = data.value2;
+    let isSetup = data.value3;
 
-    // If its a control token
-    if (data.value.value2) {
-      // control token
+    // control token
+    if (exists) {
       token = createController(tokenId, BigInt.fromI32(0), BigInt.fromI32(0));
+      // If its only whitelisted, we have done out job
+      if (!isSetup) {
+        // Will have some creators
+        populateTokenUniqueCreators(asyncContract, tokenId);
+        return token;
+      }
     } else {
-      //otherwise intialize a master token
       token = createMaster(
         tokenId,
         BigInt.fromI32(0),
         BigInt.fromI32(0),
-        ZERO_ADDRESS, // need to get and set owner!
-        BigInt.fromI32(0) // get layers sometime!!!!
+        BigInt.fromI32(0)
       );
     }
     token.save();
 
+    // since it must be minted!
     populateTokenUniqueCreators(asyncContract, tokenId);
 
-    // Populate the rest
+    // Populate the rest of the token!
     token = populateTokenHelper(asyncContract, tokenId, token);
   } else {
-    // If its already been pulled and set up, just return it! First most common case!
-    // If its creator is populated, that means it has been minted and set up
-    // Id master token is set up
+    // ALREADY EXISTS> EITHER POPULATED, Or just whitelisted
     if (token.isMaster) {
       if (token.uniqueTokenCreators != null) {
         return token;
@@ -320,7 +381,6 @@ export function getOrInitialiseToken(
       if (!data.value.value3) {
         return token;
       }
-
       populateTokenUniqueCreators(asyncContract, tokenId);
     }
 
@@ -342,14 +402,12 @@ function populateTokenHelper(
   let user: User | null;
   if (currentOwner.reverted) {
     log.critical("Owner should be defined", []);
-    user = createOrFetchUserString(ZERO_ADDRESS);
+    // control token is still only whitelisted.
   } else {
-    // TODO: Owner may not be creator for V1 tokens caution!
     user = createOrFetchUserBytes(currentOwner.value);
+    token.owner = user.id;
+    user.save();
   }
-
-  token.owner = user.id;
-  user.save();
 
   token.platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
     tokenId
@@ -455,6 +513,7 @@ export function getOrInitialiseLever(
     lever.maxValue = BigInt.fromI32(0);
     lever.currentValue = BigInt.fromI32(0);
     lever.previousValue = BigInt.fromI32(0);
+    lever.layer = tokenId.toString() + "-Controller";
   }
   return lever;
 }
