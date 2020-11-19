@@ -239,6 +239,7 @@ function createController(
   );
   tokenControllerObject.numControlLevers = BigInt.fromI32(0);
   tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
+  tokenControllerObject.numberOfUpdates = BigInt.fromI32(0);
   tokenControllerObject.isSetup = false;
   tokenControllerObject.tokenDetails = token.id;
   if (!masterTokenId.equals(BigInt.fromI32(0))) {
@@ -510,7 +511,12 @@ export function getOrInitialiseLever(
     lever.maxValue = BigInt.fromI32(0);
     lever.currentValue = BigInt.fromI32(0);
     lever.previousValue = BigInt.fromI32(0);
-    lever.layer = tokenId.toString() + "-Controller";
+    let tokenController = TokenController.load(
+      tokenId.toString() + "-Controller"
+    );
+    lever.layer = tokenController.id;
+    tokenController.levers = tokenController.levers.concat([lever.id]);
+    tokenController.save();
   }
   return lever;
 }

@@ -22,6 +22,8 @@ import {
   Sale,
   TokenControlLever,
   User,
+  LayerUpdate,
+  TokenController,
 } from "../generated/schema";
 import {
   saveEventToStateChange,
@@ -137,6 +139,8 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   let txTimestamp = event.block.timestamp;
   let blockNumber = event.block.number;
   let txHash = event.transaction.hash;
+  let gasPrice = event.transaction.gasPrice;
+  let gasUsed = event.transaction.gasUsed;
   let tokenId = event.params.tokenId;
   let priorityTip = event.params.priorityTip;
   let numRemainingUpdates = event.params.numRemainingUpdates;
@@ -152,16 +156,39 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
     log.critical("Token should be defined", []);
   }
 
+  let controllerToken = TokenController.load(
+    tokenId.toString() + "-Controller"
+  );
+  let newNumberOfUpdates = controllerToken.numberOfUpdates.plus(
+    BigInt.fromI32(1)
+  );
+  controllerToken.numberOfUpdates = newNumberOfUpdates;
+  controllerToken.numRemainingUpdates = numRemainingUpdates;
+
+  let layerUpdate = new LayerUpdate(
+    tokenId.toString() + "-" + newNumberOfUpdates.toString()
+  );
+  layerUpdate.updateNumber = newNumberOfUpdates;
+  layerUpdate.gasPrice = gasPrice;
+  layerUpdate.gasUsed = gasUsed;
+  layerUpdate.costInWei = gasPrice.times(gasUsed);
+  layerUpdate.priorityTip = priorityTip;
+  layerUpdate.layer = controllerToken.id;
+  layerUpdate.leversUpdated = [];
+
   for (let i = 0; i < previousValues.length; i++) {
     let lever = TokenControlLever.load(
       tokenId.toString() + "-" + leverIds[i].toString()
     );
     lever.previousValue = previousValues[i];
     lever.currentValue = updatedValues[i];
+    lever.latestUpdate = layerUpdate.id;
     lever.save();
+    layerUpdate.leversUpdated = layerUpdate.leversUpdated.concat([lever.id]);
   }
 
-  token.save();
+  layerUpdate.save();
+  controllerToken.save();
 }
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {

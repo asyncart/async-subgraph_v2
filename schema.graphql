@@ -42,6 +42,7 @@ type TokenController @entity {
   id: ID! # token id - "Controller"
   numControlLevers: BigInt!
   numRemainingUpdates: BigInt!
+  numberOfUpdates: BigInt!
   isSetup: Boolean!
   tokenDetails: Token!
   associatedMasterToken: TokenMaster # These are difficult to define as non-nullable depending on token migration order from v1
@@ -55,15 +56,19 @@ type TokenControlLever @entity {
   currentValue: BigInt!
   previousValue: BigInt!
   layer: TokenController!
+  latestUpdate: LayerUpdate
 }
 
-# type LayerUpdate @entity {
-#   id: ID! # token id - 'update number'
-#   gasPrice: BigInt!
-#   gasUsed: BigInt!
-#   costInWei: BigInt!
-#   layer: TokenController!
-# }
+type LayerUpdate @entity {
+  id: ID! # token id - 'update number'
+  updateNumber: BigInt!
+  gasPrice: BigInt!
+  gasUsed: BigInt!
+  costInWei: BigInt!
+  priorityTip: BigInt!
+  layer: TokenController!
+  leversUpdated: [TokenControlLever!]!
+}
 
 #####################################
 ########## PLATFORM USERS ###########
