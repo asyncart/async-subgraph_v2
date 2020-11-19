@@ -56,7 +56,6 @@ export function handleBidProposed(event: BidProposed): void {
 
   let asyncContract = Contract.bind(event.address);
   // Hooks to update state from contract
-  linkMasterAndControllers(asyncContract, tokenId);
   let globalState = getOrInitialiseGlobalState(asyncContract);
   globalState.save();
 
@@ -85,6 +84,7 @@ export function handleBidProposed(event: BidProposed): void {
     user.save();
     token.save();
     bid.save();
+    linkMasterAndControllers(tokenId);
   }
 }
 
@@ -121,15 +121,16 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
 
   let asyncContract = Contract.bind(event.address);
   // Hooks to update state from contract
-  linkMasterAndControllers(asyncContract, tokenId);
   refreshGlobalState(asyncContract);
 
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
-    log.critical("Token should be defined", []);
+    log.warning("Token should be defined", []);
+  } else {
+    token.currentBuyPrice = buyPrice;
+    token.save();
+    linkMasterAndControllers(tokenId);
   }
-  token.currentBuyPrice = buyPrice;
-  token.save();
 }
 
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
@@ -164,7 +165,7 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
 }
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
-  log.warning("Whitelist", []);
+  //log.warning("Whitelist", []);
   let txTimestamp = event.block.timestamp;
   let blockNumber = event.block.number;
   let txHash = event.transaction.hash;
@@ -196,7 +197,6 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
 
   let asyncContract = Contract.bind(event.address);
   // Hooks to update state from contract
-  linkMasterAndControllers(asyncContract, tokenId);
   let globalState = getOrInitialiseGlobalState(asyncContract);
   globalState.save();
 
@@ -210,6 +210,7 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
     token.permissionedAddress = permissioned;
     token.save();
   }
+  linkMasterAndControllers(tokenId);
 }
 
 export function handlePlatformAddressUpdated(
@@ -235,7 +236,6 @@ export function handlePlatformSalePercentageUpdated(
 
   let asyncContract = Contract.bind(event.address);
   // Hooks to update state from contract
-  linkMasterAndControllers(asyncContract, tokenId);
   refreshGlobalState(asyncContract);
 
   let token = getOrInitialiseToken(asyncContract, tokenId);
@@ -245,6 +245,7 @@ export function handlePlatformSalePercentageUpdated(
   token.platformFirstSalePercentage = platformFirstPercentage;
   token.platformSecondSalePercentage = platformSecondPercentage;
   token.save();
+  linkMasterAndControllers(tokenId);
 }
 
 export function handleTokenSale(event: TokenSale): void {
@@ -257,7 +258,6 @@ export function handleTokenSale(event: TokenSale): void {
 
   let asyncContract = Contract.bind(event.address);
   // Hooks to update state from contract
-  linkMasterAndControllers(asyncContract, tokenId);
   refreshGlobalState(asyncContract);
 
   let buyer = createOrFetchUserString(_buyer.toHexString());
@@ -321,30 +321,29 @@ export function handleTokenSale(event: TokenSale): void {
   seller.save();
   sale.save();
   token.save();
+  linkMasterAndControllers(tokenId);
 }
 
 export function handleApproval(event: Approval): void {
-  let owner = event.params.owner;
-  let ownerString = owner.toHex();
-  let txTimestamp = event.block.timestamp;
-  let blockNumber = event.block.number;
-
-  let eventParamValues: Array<string> = [ownerString];
-  let eventParamNames: Array<string> = ["owner"];
-  let eventParamTypes: Array<string> = ["address"];
-
-  saveEventToStateChange(
-    event.transaction.hash,
-    txTimestamp,
-    blockNumber,
-    "Approval",
-    eventParamValues,
-    eventParamNames,
-    eventParamTypes,
-    [],
-    [],
-    0
-  );
+  // let owner = event.params.owner;
+  // let ownerString = owner.toHex();
+  // let txTimestamp = event.block.timestamp;
+  // let blockNumber = event.block.number;
+  // let eventParamValues: Array<string> = [ownerString];
+  // let eventParamNames: Array<string> = ["owner"];
+  // let eventParamTypes: Array<string> = ["address"];
+  // saveEventToStateChange(
+  //   event.transaction.hash,
+  //   txTimestamp,
+  //   blockNumber,
+  //   "Approval",
+  //   eventParamValues,
+  //   eventParamNames,
+  //   eventParamTypes,
+  //   [],
+  //   [],
+  //   0
+  // );
 }
 
 export function handleApprovalForAll(event: ApprovalForAll): void {}

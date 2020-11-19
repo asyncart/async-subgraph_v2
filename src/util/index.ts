@@ -145,10 +145,7 @@ export function getPermissionedAddress(
 
 // Check with conlan this is how previous tokens behaved
 // Assume this is the same
-export function linkMasterAndControllers(
-  asyncContract: Contract,
-  tokenId: BigInt
-): void {
+export function linkMasterAndControllers(tokenId: BigInt): void {
   // Function links master to layers and visa versa
 
   let token = Token.load(tokenId.toString());
@@ -169,15 +166,15 @@ export function linkMasterAndControllers(
         if (tokenController == null) {
           log.warning("Layer not around yet", []);
           return;
+        } else {
+          tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
+          tokenController.associatedMasterToken = tokenMaster.id;
+          tokenController.save();
         }
-        tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
-        tokenController.associatedMasterToken = tokenMaster.id;
-        tokenController.save();
       }
       tokenMaster.save();
     }
   }
-  // Function links master to layers and visa versa
 }
 
 /////////////////////////////////////////////
