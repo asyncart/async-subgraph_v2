@@ -45,25 +45,25 @@ type TokenController @entity {
   isSetup: Boolean!
   tokenDetails: Token!
   associatedMasterToken: TokenMaster # These are difficult to define as non-nullable depending on token migration order from v1
-  # levers: [TokenControlLever!] # will be null if not set up
+  levers: [TokenControlLever!] # will be null if not set up
 }
 
-# type TokenControlLever @entity {
-#   id: ID! # token ID - token lever ID
-#   minValue: BigInt!
-#   maxValue: BigInt!
-#   currentValue: BigInt!
-#   previousValue: BigInt!
-#   layer: TokenController!
-# }
-
-type LayerUpdate @entity {
-  id: ID! # token id - 'update number'
-  gasPrice: BigInt!
-  gasUsed: BigInt!
-  costInWei: BigInt!
+type TokenControlLever @entity {
+  id: ID! # token ID - token lever ID
+  minValue: BigInt!
+  maxValue: BigInt!
+  currentValue: BigInt!
+  previousValue: BigInt!
   layer: TokenController!
 }
+
+# type LayerUpdate @entity {
+#   id: ID! # token id - 'update number'
+#   gasPrice: BigInt!
+#   gasUsed: BigInt!
+#   costInWei: BigInt!
+#   layer: TokenController!
+# }
 
 #####################################
 ########## PLATFORM USERS ###########
