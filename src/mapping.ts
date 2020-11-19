@@ -148,6 +148,7 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   let leverIds = event.params.leverIds;
   let previousValues = event.params.previousValues;
   let updatedValues = event.params.updatedValues;
+  let updateCost = gasUsed.times(gasPrice);
 
   let asyncContract = Contract.bind(event.address);
   refreshGlobalState(asyncContract);
@@ -163,6 +164,17 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   let newNumberOfUpdates = controllerToken.numberOfUpdates.plus(
     BigInt.fromI32(1)
   );
+
+  if (controllerToken.numberOfUpdates.equals(BigInt.fromI32(0))) {
+    controllerToken.averageUpdateCost = updateCost;
+  } else {
+    // DOES BN LIBRAY follow bodmas! Surely?
+    let numerator = controllerToken.averageUpdateCost
+      .times(controllerToken.numberOfUpdates)
+      .plus(updateCost);
+    controllerToken.averageUpdateCost = numerator.div(newNumberOfUpdates);
+  }
+
   controllerToken.numberOfUpdates = newNumberOfUpdates;
   controllerToken.numRemainingUpdates = numRemainingUpdates;
 
@@ -172,7 +184,7 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   layerUpdate.updateNumber = newNumberOfUpdates;
   layerUpdate.gasPrice = gasPrice;
   layerUpdate.gasUsed = gasUsed;
-  layerUpdate.costInWei = gasPrice.times(gasUsed);
+  layerUpdate.costInWei = updateCost;
   layerUpdate.priorityTip = priorityTip;
   layerUpdate.layer = controllerToken.id;
   layerUpdate.leversUpdated = [];
@@ -291,6 +303,9 @@ export function handleTokenSale(event: TokenSale): void {
   refreshGlobalState(asyncContract);
 
   let buyer = createOrFetchUserString(_buyer.toHexString());
+  // Edge case, the token isn't intialised. Then token.owner would be set
+  // to current owner which is already now the buyer.
+  // No straight forward fix. Ignore for now.
   let token = getOrInitialiseToken(asyncContract, tokenId);
   let seller = User.load(token.owner);
 
@@ -322,7 +337,7 @@ export function handleTokenSale(event: TokenSale): void {
   }
 
   token.owner = buyer.id;
-  token.lastSalePrice = salePrice;
+  token.lastSale = sale.id;
   token.currentBuyPrice = BigInt.fromI32(0);
   token.numberOfSales = token.numberOfSales.plus(BigInt.fromI32(1));
   token.tokenDidHaveFirstSale = true;

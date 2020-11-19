@@ -24,7 +24,7 @@ type Token @entity {
   platformFirstSalePercentage: BigInt!
   platformSecondSalePercentage: BigInt!
   currentBuyPrice: BigInt!
-  lastSalePrice: BigInt!
+  lastSale: Sale
   numberOfSales: BigInt!
   uniqueTokenCreators: [User!]
   tokenDidHaveFirstSale: Boolean!
@@ -43,6 +43,7 @@ type TokenController @entity {
   numControlLevers: BigInt!
   numRemainingUpdates: BigInt!
   numberOfUpdates: BigInt!
+  averageUpdateCost: BigInt
   isSetup: Boolean!
   tokenDetails: Token!
   associatedMasterToken: TokenMaster # These are difficult to define as non-nullable depending on token migration order from v1

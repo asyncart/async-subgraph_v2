@@ -193,7 +193,6 @@ function createToken(
   token.platformFirstSalePercentage = platformFirstSalePercentage;
   token.platformSecondSalePercentage = platformSecondSalePercentage;
   token.currentBuyPrice = BigInt.fromI32(0);
-  token.lastSalePrice = BigInt.fromI32(0);
   token.numberOfSales = BigInt.fromI32(0);
   token.tokenDidHaveFirstSale = false;
   return token;
