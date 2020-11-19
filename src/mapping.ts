@@ -183,6 +183,7 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
     lever.previousValue = previousValues[i];
     lever.currentValue = updatedValues[i];
     lever.latestUpdate = layerUpdate.id;
+    lever.numberOfUpdates = lever.numberOfUpdates.plus(BigInt.fromI32(1));
     lever.save();
     layerUpdate.leversUpdated = layerUpdate.leversUpdated.concat([lever.id]);
   }

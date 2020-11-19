@@ -511,6 +511,7 @@ export function getOrInitialiseLever(
     lever.maxValue = BigInt.fromI32(0);
     lever.currentValue = BigInt.fromI32(0);
     lever.previousValue = BigInt.fromI32(0);
+    lever.numberOfUpdates = BigInt.fromI32(0);
     let tokenController = TokenController.load(
       tokenId.toString() + "-Controller"
     );

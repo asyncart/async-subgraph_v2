@@ -51,6 +51,7 @@ type TokenController @entity {
 
 type TokenControlLever @entity {
   id: ID! # token ID - token lever ID
+  numberOfUpdates: BigInt!
   minValue: BigInt!
   maxValue: BigInt!
   currentValue: BigInt!
