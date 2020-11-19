@@ -190,6 +190,7 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
 
   layerUpdate.save();
   controllerToken.save();
+  token.save();
 }
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
