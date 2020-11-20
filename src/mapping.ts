@@ -403,7 +403,7 @@ export function handleTransfer(event: Transfer): void {
   }
 
   let transfer = new TokenTransfer(
-    tokenId.toString() + "-" + txHash.toString()
+    tokenId.toString() + "-" + txHash.toHexString()
   );
   transfer.tokenDetails = token.id;
   transfer.to = to.id;
