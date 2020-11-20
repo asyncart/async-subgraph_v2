@@ -78,6 +78,7 @@ export function handleBidProposed(event: BidProposed): void {
     let oldBid = Bid.load(token.currentBid);
     if (oldBid != null) {
       oldBid.bidActive = false;
+      token.pastBids = token.pastBids.concat([oldBid.id]);
       oldBid.save();
     }
 
@@ -110,7 +111,9 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
     } else {
       bid.bidActive = false;
       bid.BidWithdrawnTimestamp = txTimestamp;
+      token.pastBids = token.pastBids.concat([bid.id]);
       bid.save();
+      token.save();
     }
   }
 }
@@ -200,6 +203,11 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
     lever.save();
     layerUpdate.leversUpdated = layerUpdate.leversUpdated.concat([lever.id]);
   }
+
+  controllerToken.allUpdates = controllerToken.allUpdates.concat([
+    layerUpdate.id,
+  ]);
+  controllerToken.lastUpdate = layerUpdate.id;
 
   layerUpdate.save();
   controllerToken.save();
@@ -300,7 +308,8 @@ export function handleTokenSale(event: TokenSale): void {
 
   let asyncContract = Contract.bind(event.address);
   // Hooks to update state from contract
-  refreshGlobalState(asyncContract);
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  globalState.totalSaleAmount = globalState.totalSaleAmount.plus(salePrice);
 
   let buyer = createOrFetchUserString(_buyer.toHexString());
   // Edge case, the token isn't intialised. Then token.owner would be set
@@ -333,6 +342,7 @@ export function handleTokenSale(event: TokenSale): void {
       sale.bidDetails = bid.id;
     }
     bid.bidActive = false;
+    token.pastBids = token.pastBids.concat([bid.id]);
     bid.save();
   }
 
@@ -341,6 +351,7 @@ export function handleTokenSale(event: TokenSale): void {
   token.currentBuyPrice = BigInt.fromI32(0);
   token.numberOfSales = token.numberOfSales.plus(BigInt.fromI32(1));
   token.tokenDidHaveFirstSale = true;
+  token.allSales = token.allSales.concat([sale.id]);
   token.currentBid = null;
   // If the token get bought back and was previously permissioned, this permission remains!
   let possiblePermissionedAddress = getPermissionedAddress(
@@ -350,14 +361,14 @@ export function handleTokenSale(event: TokenSale): void {
   );
   token.permissionedAddress = possiblePermissionedAddress;
 
-  // If they buy this back, will it be a duplicate
-  if (token.isMaster) {
-    buyer.ownedMasters = buyer.ownedMasters.concat([token.id + "-Master"]);
-  } else {
-    buyer.ownerControllers = buyer.ownerControllers.concat([
-      token.id + "-Controller",
-    ]);
-  }
+  // This is happening on transfer event
+  // if (token.isMaster) {
+  //   buyer.ownedMasters = buyer.ownedMasters.concat([token.id + "-Master"]);
+  // } else {
+  //   buyer.ownerControllers = buyer.ownerControllers.concat([
+  //     token.id + "-Controller",
+  //   ]);
+  // }
 
   buyer.buys = buyer.buys.concat([sale.id]);
   seller.sells = seller.sells.concat([sale.id]);
@@ -366,6 +377,7 @@ export function handleTokenSale(event: TokenSale): void {
   seller.save();
   sale.save();
   token.save();
+  globalState.save();
   linkMasterAndControllers(tokenId);
 }
 
@@ -405,14 +417,25 @@ export function handleTransfer(event: Transfer): void {
   );
   token.permissionedAddress = possiblePermissionedAddress;
   token.owner = to.id;
+  token.currentBuyPrice = BigInt.fromI32(0); // Since transfer overrides this to zero?
+  token.lastTransfer = transfer.id;
+  token.allTransfers = token.allTransfers.concat([transfer.id]);
 
-  // Careful if they have already owned it! Don't add duplicate item
+  token.pastOwners =
+    token.pastOwners.indexOf(from.id) === -1
+      ? token.pastOwners.concat([from.id])
+      : token.pastOwners;
+
   if (token.isMaster) {
-    to.ownedMasters = to.ownedMasters.concat([token.id + "-Master"]);
+    to.ownedMasters =
+      to.ownedMasters.indexOf(token.id + "-Master") === -1
+        ? to.ownedMasters.concat([token.id + "-Master"])
+        : to.ownedMasters;
   } else {
-    to.ownerControllers = to.ownerControllers.concat([
-      token.id + "-Controller",
-    ]);
+    to.ownerControllers =
+      to.ownerControllers.indexOf(token.id + "-Controller") === -1
+        ? to.ownerControllers.concat([token.id + "-Controller"])
+        : to.ownerControllers;
   }
 
   to.save();

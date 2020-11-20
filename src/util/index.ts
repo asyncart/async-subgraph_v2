@@ -26,6 +26,7 @@ export function getOrInitialiseGlobalState(
   if (globalState == null) {
     globalState = new GlobalState("MASTER");
     globalState.latestMasterTokenId = BigInt.fromI32(0);
+    globalState.totalSaleAmount = BigInt.fromI32(0);
     globalState.currentExpectedTokenSupply = asyncContract.expectedTokenSupply();
     globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
     globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
@@ -88,16 +89,22 @@ export function populateTokenUniqueCreators(
       if (tokenCreator.value.toHexString() != ZERO_ADDRESS) {
         // Get the user
         let user = createOrFetchUserBytes(tokenCreator.value);
-        token.uniqueTokenCreators = token.uniqueTokenCreators.concat([user.id]);
+        token.uniqueTokenCreators =
+          token.uniqueTokenCreators.indexOf(user.id) === -1
+            ? token.uniqueTokenCreators.concat([user.id])
+            : token.uniqueTokenCreators;
+
         user.isArtist = true;
         if (token.isMaster) {
-          user.createdMasters = user.createdMasters.concat([
-            token.id + "-Master",
-          ]);
+          user.createdMasters =
+            user.createdMasters.indexOf(token.id + "-Master") === -1
+              ? user.createdMasters.concat([token.id + "-Master"])
+              : user.createdMasters;
         } else {
-          user.createdControllers = user.createdControllers.concat([
-            token.id + "-Controller",
-          ]);
+          user.createdControllers =
+            user.createdControllers.indexOf(token.id + "-Controller") === -1
+              ? user.createdControllers.concat([token.id + "-Controller"])
+              : user.createdControllers;
         }
         user.save();
 
@@ -414,11 +421,18 @@ function populateTokenHelper(
   );
   token.tokenDidHaveFirstSale = asyncContract.tokenDidHaveFirstSale(tokenId);
 
-  // token.permissionedAddress = getPermissionedAddress(
-  //   asyncContract,
-  //   tokenId,
-  //   currentOwner.value // cast to bytes
-  // );
+  let uri = asyncContract.try_tokenURI(tokenId);
+  if (uri.reverted) {
+    log.warning("uri does not exist yet", []);
+  } else {
+    token.uri = uri.value;
+  }
+
+  token.permissionedAddress = getPermissionedAddress(
+    asyncContract,
+    tokenId,
+    currentOwner.value // cast to bytes
+  );
 
   // Populate currentBid ->NOTE THIS will be populated by handler. No need to pull
   // Populate current buy price -> NOTE THIS will be populated by handler. No need to pull

@@ -8,6 +8,7 @@ type GlobalState @entity {
   minBidIncreasePercent: BigInt!
   artistSecondSalePercentage: BigInt!
   platformAddress: Bytes!
+  totalSaleAmount: BigInt!
 }
 
 #####################################
@@ -17,16 +18,22 @@ type Token @entity {
   id: ID! # token id
   owner: User # No owner if its only whitelisted
   tokenId: BigInt!
+  uri: String # Will be empty if only whitelisted
   isMaster: Boolean!
   tokenMaster: TokenMaster
   tokenController: TokenController
   currentBid: Bid
+  pastBids: [Bid!]
   platformFirstSalePercentage: BigInt!
   platformSecondSalePercentage: BigInt!
   currentBuyPrice: BigInt!
   lastSale: Sale
+  allSales: [Sale!]
   numberOfSales: BigInt!
+  lastTransfer: TokenTransfer
+  allTransfers: [TokenTransfer!]
   uniqueTokenCreators: [User!]
+  pastOwners: [User!]
   tokenDidHaveFirstSale: Boolean!
   permissionedAddress: Bytes
 }
@@ -48,6 +55,8 @@ type TokenController @entity {
   tokenDetails: Token!
   associatedMasterToken: TokenMaster # These are difficult to define as non-nullable depending on token migration order from v1
   levers: [TokenControlLever!] # will be null if not set up
+  lastUpdate: LayerUpdate
+  allUpdates: [LayerUpdate!]
 }
 
 type TokenControlLever @entity {
