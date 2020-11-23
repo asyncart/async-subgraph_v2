@@ -174,7 +174,11 @@ export function linkMasterAndControllers(tokenId: BigInt): void {
           log.warning("Layer not around yet", []);
           return;
         } else {
-          tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
+          //tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
+          tokenMaster.layers =
+            tokenMaster.layers.indexOf(tokenController.id) === -1
+              ? tokenMaster.layers.concat([tokenController.id])
+              : tokenMaster.layers;
           tokenController.associatedMasterToken = tokenMaster.id;
           tokenController.save();
         }
@@ -184,6 +188,50 @@ export function linkMasterAndControllers(tokenId: BigInt): void {
   }
 }
 
+export function trySetMasterLayers(tokenId: BigInt): void {
+  // let globalState = GlobalState.load("MASTER");
+  // for (let i = 0; i < globalState.tokenMasterIDs.length; i++) {
+  //   let tokenId = globalState.tokenMasterIDs[i];
+
+  // }
+
+  let token = Token.load(tokenId.toString());
+  if (token == null) {
+    log.critical("This should be defined", []);
+  }
+  if (token.isMaster) {
+    let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
+    if (tokenMaster == null) {
+      log.critical("This should be defined", []);
+    }
+    if (tokenMaster.layers == null) {
+      if (tokenMaster.layerCount.equals(BigInt.fromI32(0))) {
+        // Lets try populate if all the layers exist!
+        let index = token.tokenId.plus(BigInt.fromI32(1));
+        while (true) {
+          let tokenController = TokenController.load(
+            index.toString() + "-Controller"
+          );
+          if (tokenController == null) {
+            let potentialMaster = TokenMaster.load(
+              index.toString() + "-Master"
+            );
+            if (potentialMaster == null) {
+              log.info("Cannot save layer count yet.", []);
+              return;
+            } else {
+              break;
+            }
+          } else {
+            index = index.plus(BigInt.fromI32(1));
+          }
+        }
+        tokenMaster.layerCount = index.minus(tokenId).minus(BigInt.fromI32(1));
+        tokenMaster.save();
+      }
+    }
+  }
+}
 /////////////////////////////////////////////
 //////////// CREATE TOKENS /////////////////////
 ////////////////////////////////////////////
@@ -206,6 +254,7 @@ function createToken(
 }
 
 function createMaster(
+  asyncContract: Contract,
   tokenId: BigInt,
   platformFirstSalePercentage: BigInt,
   platformSecondSalePercentage: BigInt,
@@ -217,6 +266,10 @@ function createMaster(
     platformFirstSalePercentage,
     platformSecondSalePercentage
   );
+
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  globalState.tokenMasterIDs = globalState.tokenMasterIDs.concat([tokenId]);
+  globalState.save();
 
   let tokenMasterObject = new TokenMaster(tokenId.toString() + "-Master");
   tokenMasterObject.layerCount = layers;
@@ -272,6 +325,7 @@ export function createTokensFromMasterTokenId(
 
   // Create the master token
   let masterToken = createMaster(
+    asyncContract,
     tokenStart,
     platformFirstSalePercentage,
     platformSecondSalePercentage,
@@ -349,6 +403,7 @@ export function getOrInitialiseToken(
       }
     } else {
       token = createMaster(
+        asyncContract,
         tokenId,
         BigInt.fromI32(0),
         BigInt.fromI32(0),
@@ -442,6 +497,7 @@ function populateTokenHelper(
 
   if (token.isMaster) {
     pullAndSaveMasterTokenData(asyncContract, tokenId);
+    trySetMasterLayers(tokenId);
   } else {
     pullAndSaveControlTokenData(asyncContract, tokenId);
     pullAndSaveLevers(asyncContract, tokenId);
