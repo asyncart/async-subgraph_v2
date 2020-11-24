@@ -9,7 +9,7 @@ type GlobalState @entity {
   artistSecondSalePercentage: BigInt!
   platformAddress: Bytes!
   totalSaleAmount: BigInt!
-  tokenMasterIDs: [BigInt!]
+  tokenMasterIDs: [BigInt!]!
 }
 
 #####################################

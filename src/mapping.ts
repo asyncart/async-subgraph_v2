@@ -89,8 +89,8 @@ export function handleBidProposed(event: BidProposed): void {
     user.save();
     token.save();
     bid.save();
-    trySetMasterLayers(tokenId);
-    linkMasterAndControllers(tokenId);
+    trySetMasterLayers();
+    linkMasterAndControllers();
   }
 }
 
@@ -137,8 +137,8 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   } else {
     token.currentBuyPrice = buyPrice;
     token.save();
-    trySetMasterLayers(tokenId);
-    linkMasterAndControllers(tokenId);
+    trySetMasterLayers();
+    linkMasterAndControllers();
   }
 }
 
@@ -263,8 +263,8 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
     token.permissionedAddress = permissioned;
     token.save();
   }
-  trySetMasterLayers(tokenId);
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayers();
+  linkMasterAndControllers();
 }
 
 export function handlePlatformAddressUpdated(
@@ -299,8 +299,8 @@ export function handlePlatformSalePercentageUpdated(
   token.platformFirstSalePercentage = platformFirstPercentage;
   token.platformSecondSalePercentage = platformSecondPercentage;
   token.save();
-  trySetMasterLayers(tokenId);
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayers();
+  linkMasterAndControllers();
 }
 
 export function handleTokenSale(event: TokenSale): void {
@@ -383,8 +383,8 @@ export function handleTokenSale(event: TokenSale): void {
   sale.save();
   token.save();
   globalState.save();
-  trySetMasterLayers(tokenId);
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayers();
+  linkMasterAndControllers();
 }
 
 export function handleTransfer(event: Transfer): void {
@@ -448,8 +448,8 @@ export function handleTransfer(event: Transfer): void {
   from.save();
   transfer.save();
   token.save();
-  trySetMasterLayers(tokenId);
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayers();
+  linkMasterAndControllers();
 }
 
 export function handleApproval(event: Approval): void {
