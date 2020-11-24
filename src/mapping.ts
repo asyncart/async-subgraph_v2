@@ -42,12 +42,31 @@ import {
 export function handleArtistSecondSalePercentUpdated(
   event: ArtistSecondSalePercentUpdated
 ): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
   let newSecondPercentage = event.params.artistSecondPercentage;
   let asyncContract = Contract.bind(event.address);
   let globalState = getOrInitialiseGlobalState(asyncContract);
 
   globalState.artistSecondSalePercentage = newSecondPercentage;
   globalState.save();
+
+  let eventParamValues: Array<string> = [newSecondPercentage.toString()];
+  let eventParamNames: Array<string> = ["artistSecondPercentage"];
+  let eventParamTypes: Array<string> = ["uint256"];
+
+  saveEventToStateChange(
+    event.transaction.hash,
+    txTimestamp,
+    blockNumber,
+    "ArtistSecondSalePercentUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [],
+    0
+  );
 }
 
 export function handleBidProposed(event: BidProposed): void {
@@ -92,6 +111,27 @@ export function handleBidProposed(event: BidProposed): void {
     trySetMasterLayers();
     linkMasterAndControllers();
   }
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    bidAmount.toString(),
+    bidder.toHex(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "bidAmount", "bidder"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "BidProposed",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [user.id],
+    [token.id],
+    0
+  );
 }
 
 export function handleBidWithdrawn(event: BidWithdrawn): void {
@@ -118,6 +158,23 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
       token.save();
     }
   }
+
+  let eventParamValues: Array<string> = [tokenId.toString()];
+  let eventParamNames: Array<string> = ["tokenId"];
+  let eventParamTypes: Array<string> = ["uint256"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "BidWithdrawn",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleBuyPriceSet(event: BuyPriceSet): void {
@@ -134,12 +191,31 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.warning("Token should be defined", []);
-  } else {
-    token.currentBuyPrice = buyPrice;
-    token.save();
-    trySetMasterLayers();
-    linkMasterAndControllers();
   }
+  token.currentBuyPrice = buyPrice;
+  token.save();
+  trySetMasterLayers();
+  linkMasterAndControllers();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    buyPrice.toString(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "price"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "BuyPriceSet",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
@@ -215,6 +291,58 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   layerUpdate.save();
   controllerToken.save();
   token.save();
+
+  let leverIdsString: Array<string> = [];
+  let previousValuesString: Array<string> = [];
+  let updatedValuesString: Array<string> = [];
+
+  for (let i = 0; i < leverIds.length; i++) {
+    leverIdsString = leverIdsString.concat([leverIds[i].toString()]);
+    previousValuesString = previousValuesString.concat([
+      previousValues[i].toString(),
+    ]);
+    updatedValuesString = updatedValuesString.concat([
+      updatedValues[i].toString(),
+    ]);
+  }
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    priorityTip.toString(),
+    numRemainingUpdates.toString(),
+    leverIdsString.toString(),
+    previousValuesString.toString(),
+    updatedValuesString.toString(),
+  ];
+  let eventParamNames: Array<string> = [
+    "tokenId",
+    "priorityTip",
+    "numRemainingUpdates",
+    "leverIds",
+    "previousValues",
+    "updatedValues",
+  ];
+  let eventParamTypes: Array<string> = [
+    "uint256",
+    "uint256",
+    "int256",
+    "uint256[]",
+    "int256[]",
+    "int256[]",
+  ];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "ControlLeverUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [token.owner],
+    [token.id],
+    0
+  );
 }
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
@@ -238,6 +366,27 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
   globalState.save();
 
   createTokensFromMasterTokenId(asyncContract, tokenId, layerCount);
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    layerCount.toString(),
+    artistAddressString,
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "layerCount", "creator"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "CreatorWhitelisted",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [],
+    0
+  );
 }
 
 export function handlePermissionUpdated(event: PermissionUpdated): void {
@@ -265,6 +414,31 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
   }
   trySetMasterLayers();
   linkMasterAndControllers();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    addressOfGranter.toHex(),
+    permissioned.toHex(),
+  ];
+  let eventParamNames: Array<string> = [
+    "tokenId",
+    "tokenOwner",
+    "permissioned",
+  ];
+  let eventParamTypes: Array<string> = ["uint256", "address", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "PermissionUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handlePlatformAddressUpdated(

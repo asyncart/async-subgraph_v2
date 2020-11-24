@@ -3,8 +3,6 @@ import {
   StateChange,
   EventParam,
   EventParams,
-  Owner,
-  Artwork,
   GlobalState,
   Token,
   TokenMaster,
@@ -615,8 +613,8 @@ export function getOrInitialiseStateChange(txId: string): StateChange | null {
   if (stateChange == null) {
     stateChange = new StateChange(txId);
     stateChange.txEventParamList = [];
-    stateChange.ownerChanges = [];
-    stateChange.artworkChanges = [];
+    stateChange.userChanges = [];
+    stateChange.tokenChanges = [];
 
     return stateChange;
   } else {
@@ -673,7 +671,7 @@ function txStateChangeHelper(
   eventName: string,
   eventParamArray: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   contractVersion: i32
 ): void {
   let stateChange = getOrInitialiseStateChange(txHash.toHex());
@@ -695,16 +693,16 @@ function txStateChangeHelper(
     eventParams.id,
   ]);
   for (let i = 0, len = changedOwners.length; i < len; i++) {
-    stateChange.ownerChanges =
-      stateChange.ownerChanges.indexOf(changedOwners[i]) === -1
-        ? stateChange.ownerChanges.concat([changedOwners[i]])
-        : stateChange.ownerChanges;
+    stateChange.userChanges =
+      stateChange.userChanges.indexOf(changedOwners[i]) === -1
+        ? stateChange.userChanges.concat([changedOwners[i]])
+        : stateChange.userChanges;
   }
-  for (let i = 0, len = changedArtworks.length; i < len; i++) {
-    stateChange.artworkChanges =
-      stateChange.artworkChanges.indexOf(changedArtworks[i]) === -1
-        ? stateChange.artworkChanges.concat([changedArtworks[i]])
-        : stateChange.artworkChanges;
+  for (let i = 0, len = changedTokens.length; i < len; i++) {
+    stateChange.tokenChanges =
+      stateChange.tokenChanges.indexOf(changedTokens[i]) === -1
+        ? stateChange.tokenChanges.concat([changedTokens[i]])
+        : stateChange.tokenChanges;
   }
   stateChange.contractVersion = contractVersion;
   stateChange.save();
@@ -718,7 +716,7 @@ export function saveEventToStateChange(
   parameterNames: Array<string>,
   parameterTypes: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   version: i32
 ): void {
   let eventParamsArr: Array<string> = createEventParams(
@@ -734,7 +732,7 @@ export function saveEventToStateChange(
     eventName,
     eventParamsArr,
     changedOwners,
-    changedArtworks,
+    changedTokens,
     version
   );
 }

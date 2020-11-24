@@ -155,17 +155,7 @@ type StateChange @entity {
   timestamp: BigInt!
   blockNumber: BigInt!
   contractVersion: Int!
-  txEventList: [String!]! #call event logs or something
-  txEventParamListDeprecated: [String!]!
   txEventParamList: [EventParams!]
-  ownerChanges: [Owner!]!
-  artworkChanges: [Artwork!]!
-}
-
-type Owner @entity {
-  id: ID!
-}
-
-type Artwork @entity {
-  id: ID!
+  userChanges: [User!]
+  tokenChanges: [Token!]
 }
