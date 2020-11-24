@@ -475,6 +475,31 @@ export function handlePlatformSalePercentageUpdated(
   token.save();
   trySetMasterLayers();
   linkMasterAndControllers();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    platformFirstPercentage.toString(),
+    platformSecondPercentage.toString(),
+  ];
+  let eventParamNames: Array<string> = [
+    "tokenId",
+    "platformFirstPercentage",
+    "platformSecondPercentage",
+  ];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "uint256"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "PlatformSalePercentageUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleTokenSale(event: TokenSale): void {
@@ -540,15 +565,6 @@ export function handleTokenSale(event: TokenSale): void {
   );
   token.permissionedAddress = possiblePermissionedAddress;
 
-  // This is happening on transfer event
-  // if (token.isMaster) {
-  //   buyer.ownedMasters = buyer.ownedMasters.concat([token.id + "-Master"]);
-  // } else {
-  //   buyer.ownerControllers = buyer.ownerControllers.concat([
-  //     token.id + "-Controller",
-  //   ]);
-  // }
-
   buyer.buys = buyer.buys.concat([sale.id]);
   seller.sells = seller.sells.concat([sale.id]);
 
@@ -559,6 +575,27 @@ export function handleTokenSale(event: TokenSale): void {
   globalState.save();
   trySetMasterLayers();
   linkMasterAndControllers();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    salePrice.toString(),
+    _buyer.toHexString(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "salePrice", "_buyer"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "TokenSale",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleTransfer(event: Transfer): void {
@@ -624,28 +661,29 @@ export function handleTransfer(event: Transfer): void {
   token.save();
   trySetMasterLayers();
   linkMasterAndControllers();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    _from.toHexString(),
+    _to.toHexString(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "from", "to"];
+  let eventParamTypes: Array<string> = ["uint256", "address", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "Transfer",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
-export function handleApproval(event: Approval): void {
-  // let owner = event.params.owner;
-  // let ownerString = owner.toHex();
-  // let txTimestamp = event.block.timestamp;
-  // let blockNumber = event.block.number;
-  // let eventParamValues: Array<string> = [ownerString];
-  // let eventParamNames: Array<string> = ["owner"];
-  // let eventParamTypes: Array<string> = ["address"];
-  // saveEventToStateChange(
-  //   event.transaction.hash,
-  //   txTimestamp,
-  //   blockNumber,
-  //   "Approval",
-  //   eventParamValues,
-  //   eventParamNames,
-  //   eventParamTypes,
-  //   [],
-  //   [],
-  //   0
-  // );
-}
+export function handleApproval(event: Approval): void {}
 
 export function handleApprovalForAll(event: ApprovalForAll): void {}
