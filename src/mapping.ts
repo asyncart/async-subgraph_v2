@@ -35,8 +35,7 @@ import {
   getOrInitialiseToken,
   refreshGlobalState,
   createOrFetchUserString,
-  linkMasterAndControllers,
-  trySetMasterLayers,
+  // trySetMasterLayers,
 } from "./util";
 
 export function handleArtistSecondSalePercentUpdated(
@@ -108,8 +107,8 @@ export function handleBidProposed(event: BidProposed): void {
     user.save();
     token.save();
     bid.save();
-    trySetMasterLayers();
-    linkMasterAndControllers();
+    // trySetMasterLayers();
+    // linkMasterAndControllers();
   }
 
   let eventParamValues: Array<string> = [
@@ -194,8 +193,8 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   }
   token.currentBuyPrice = buyPrice;
   token.save();
-  trySetMasterLayers();
-  linkMasterAndControllers();
+  // trySetMasterLayers();
+  // linkMasterAndControllers();
 
   let eventParamValues: Array<string> = [
     tokenId.toString(),
@@ -412,8 +411,8 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
     token.permissionedAddress = permissioned;
     token.save();
   }
-  trySetMasterLayers();
-  linkMasterAndControllers();
+  // trySetMasterLayers();
+  //linkMasterAndControllers();
 
   let eventParamValues: Array<string> = [
     tokenId.toString(),
@@ -473,8 +472,8 @@ export function handlePlatformSalePercentageUpdated(
   token.platformFirstSalePercentage = platformFirstPercentage;
   token.platformSecondSalePercentage = platformSecondPercentage;
   token.save();
-  trySetMasterLayers();
-  linkMasterAndControllers();
+  // trySetMasterLayers();
+  // linkMasterAndControllers();
 
   let eventParamValues: Array<string> = [
     tokenId.toString(),
@@ -573,8 +572,8 @@ export function handleTokenSale(event: TokenSale): void {
   sale.save();
   token.save();
   globalState.save();
-  trySetMasterLayers();
-  linkMasterAndControllers();
+  // trySetMasterLayers();
+  // linkMasterAndControllers();
 
   let eventParamValues: Array<string> = [
     tokenId.toString(),
@@ -659,8 +658,8 @@ export function handleTransfer(event: Transfer): void {
   from.save();
   transfer.save();
   token.save();
-  trySetMasterLayers();
-  linkMasterAndControllers();
+  // trySetMasterLayers();
+  // linkMasterAndControllers();
 
   let eventParamValues: Array<string> = [
     tokenId.toString(),

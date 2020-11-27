@@ -151,99 +151,112 @@ export function getPermissionedAddress(
 
 // Check with conlan this is how previous tokens behaved
 // Assume this is the same
-export function linkMasterAndControllers(): void {
-  let globalState = GlobalState.load("MASTER");
-  let tokenMasters = globalState.tokenMasterIDs;
-  for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
-    let tokenId: BigInt = tokenMasters[j];
-    let token = Token.load(tokenId.toString());
-    if (token == null) {
-      if (tokenId.equals(BigInt.fromI32(0))) {
-        return;
-      } else {
-        log.critical("This should be defined", []);
-      }
-    }
-    if (token.isMaster) {
-      let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
-      if (tokenMaster == null) {
-        log.critical("This should be defined", []);
-      }
-      if (tokenMaster.layers == null) {
-        // Lets try populate if all the layers exist!
-        for (let i = 0; i < tokenMaster.layerCount.toI32(); i++) {
-          let tokenController = TokenController.load(
-            tokenId.plus(BigInt.fromI32(i + 1)).toString() + "-Controller"
-          );
-          if (tokenController == null) {
-            log.warning("Layer not around yet", []);
-            return;
-          } else {
-            //tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
-            tokenMaster.layers =
-              tokenMaster.layers.indexOf(tokenController.id) === -1
-                ? tokenMaster.layers.concat([tokenController.id])
-                : tokenMaster.layers;
-            tokenController.associatedMasterToken = tokenMaster.id;
-            tokenController.save();
-          }
-        }
-        tokenMaster.save();
-      }
-    }
-  }
-}
+// export function linkMasterAndControllers(): void {
+//   let globalState = GlobalState.load("MASTER");
+//   let tokenMasters = globalState.tokenMasterIDs;
+//   for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
+//     let tokenId: BigInt = tokenMasters[j];
+//     let token = Token.load(tokenId.toString());
+//     if (token == null) {
+//       if (tokenId.equals(BigInt.fromI32(0))) {
+//         return;
+//       } else {
+//         log.critical("This should be defined", []);
+//       }
+//     }
+//     if (token.isMaster) {
+//       let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
+//       if (tokenMaster == null) {
+//         log.critical("This should be defined", []);
+//       }
+//       if (tokenMaster.layers == null) {
+//         // Lets try populate if all the layers exist!
+//         for (let i = 0; i < tokenMaster.layerCount.toI32(); i++) {
+//           let tokenController = TokenController.load(
+//             tokenId.plus(BigInt.fromI32(i + 1)).toString() + "-Controller"
+//           );
+//           if (tokenController == null) {
+//             log.warning("Layer not around yet", []);
+//             // return;
+//           } else {
+//             //tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
+//             tokenMaster.layers =
+//               tokenMaster.layers.indexOf(tokenController.id) === -1
+//                 ? tokenMaster.layers.concat([tokenController.id])
+//                 : tokenMaster.layers;
+//             tokenController.associatedMasterToken = tokenMaster.id;
+//             tokenController.save();
+//           }
+//         }
+//         tokenMaster.save();
+//       }
+//     }
+//   }
+// }
 
-export function trySetMasterLayers(): void {
-  let globalState = GlobalState.load("MASTER");
-  let tokenMasters: Array<BigInt> = globalState.tokenMasterIDs;
-  for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
-    let tokenId: BigInt = tokenMasters[j];
+// export function trySetMasterLayers(): void {
+//   let globalState = GlobalState.load("MASTER");
+//   let tokenMasters: Array<BigInt> = globalState.tokenMasterIDs;
+//   for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
+//     let tokenId: BigInt = tokenMasters[j];
 
-    let token = Token.load(tokenId.toString());
-    if (token == null) {
-      if (tokenId.equals(BigInt.fromI32(0))) {
-        return;
-      } else {
-        log.critical("This should be defined", []);
-      }
-    }
-    if (token.isMaster) {
-      let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
-      if (tokenMaster == null) {
-        log.critical("This should be defined", []);
-      }
-      if (tokenMaster.layers == null) {
-        if (tokenMaster.layerCount.equals(BigInt.fromI32(0))) {
-          // Lets try populate if all the layers exist!
-          let index = token.tokenId.plus(BigInt.fromI32(1));
-          while (true) {
-            let tokenController = TokenController.load(
-              index.toString() + "-Controller"
-            );
-            if (tokenController == null) {
-              let potentialMaster = TokenMaster.load(
-                index.toString() + "-Master"
-              );
-              if (potentialMaster == null) {
-                log.info("Cannot save layer count yet.", []);
-                return;
-              } else {
-                break;
-              }
-            } else {
-              index = index.plus(BigInt.fromI32(1));
-            }
-          }
-          tokenMaster.layerCount = index
-            .minus(tokenId)
-            .minus(BigInt.fromI32(1));
-          tokenMaster.save();
-        }
-      }
-    }
-  }
-}
+//     let token = Token.load(tokenId.toString());
+//     if (token == null) {
+//       if (tokenId.equals(BigInt.fromI32(0))) {
+//         log.info("Passing", []);
+//       } else {
+//         log.critical("This should be defined", []);
+//       }
+//     } else {
+//       let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
+//       if (tokenMaster == null) {
+//         log.critical("This should be defined", []);
+//       }
+//       log.warning("Population attempt", []);
+
+//       if (
+//         tokenMaster.layerCount.equals(
+//           BigInt.fromI32(tokenMaster.layers.length)
+//         ) &&
+//         tokenMaster.layerCount.gt(BigInt.fromI32(0))
+//       ) {
+//         log.warning("Already populated...", []);
+//         return;
+//       }
+//       // Lets try populate if all the layers exist!
+//       let index = token.tokenId.plus(BigInt.fromI32(1));
+//       while (true) {
+//         let tokenController = TokenController.load(
+//           index.toString() + "-Controller"
+//         );
+//         if (tokenController == null) {
+//           let potentialMaster = TokenMaster.load(index.toString() + "-Master");
+//           if (potentialMaster == null) {
+//             log.warning(
+//               "Layer of master not upgraded. Cannot save layer count for master token: ",
+//               [tokenMaster.id]
+//             );
+//             //log.warning(tokenMaster.toString(), []);
+//           } else {
+//             tokenMaster.layerCount = index
+//               .minus(tokenId)
+//               .minus(BigInt.fromI32(1));
+//           }
+//           tokenMaster.save();
+//           return;
+//         } else {
+//           tokenMaster.layers =
+//             tokenMaster.layers.indexOf(tokenController.id) === -1
+//               ? tokenMaster.layers.concat([tokenController.id])
+//               : tokenMaster.layers;
+//           tokenController.associatedMasterToken = tokenMaster.id;
+//           tokenController.save();
+//         }
+//         index = index.plus(BigInt.fromI32(1));
+//       }
+//     }
+//   }
+// }
 /////////////////////////////////////////////
 //////////// CREATE TOKENS /////////////////////
 ////////////////////////////////////////////
@@ -359,7 +372,11 @@ export function createTokensFromMasterTokenId(
       tokenStart
     );
     token.save();
-    masterTokenObject.layers = masterTokenObject.layers.concat([token.id]);
+    // masterTokenObject.layers = masterTokenObject.layers.concat([token.id]);
+    masterTokenObject.layers =
+      masterTokenObject.layers.indexOf(token.id) === -1
+        ? masterTokenObject.layers.concat([token.id])
+        : masterTokenObject.layers;
   }
   masterTokenObject.save();
 }
