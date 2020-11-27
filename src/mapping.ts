@@ -102,6 +102,7 @@ export function handleBidProposed(event: BidProposed): void {
     }
 
     user.bids = user.bids.concat([bid.id]);
+    user.numberOfBids = user.numberOfBids.plus(BigInt.fromI32(1));
     token.currentBid = bid.id;
 
     user.save();
@@ -285,8 +286,16 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   ]);
   controllerToken.lastUpdate = layerUpdate.id;
 
+  let owner = User.load(token.owner);
+  owner.layerUpdates = owner.layerUpdates.concat([layerUpdate.id]);
+  owner.numberOfLayerUpdates = owner.numberOfLayerUpdates.plus(
+    BigInt.fromI32(1)
+  );
+  layerUpdate.userPerformingUpdate = owner.id;
+
   layerUpdate.save();
   controllerToken.save();
+  owner.save();
   token.save();
 
   let leverIdsString: Array<string> = [];
@@ -509,12 +518,13 @@ export function handleTokenSale(event: TokenSale): void {
   let globalState = getOrInitialiseGlobalState(asyncContract);
   globalState.totalSaleAmount = globalState.totalSaleAmount.plus(salePrice);
 
-  let buyer = createOrFetchUserString(_buyer.toHexString());
+  let buyer = createOrFetchUserString(_buyer.toHex());
   // Edge case, the token isn't intialised. Then token.owner would be set
   // to current owner which is already now the buyer.
   // No straight forward fix. Ignore for now.
   let token = getOrInitialiseToken(asyncContract, tokenId);
-  let seller = User.load(token.owner);
+  // SINCE transfer event is already called, the previous token owner is actually the seller
+  let seller = User.load(token.previousOwner);
 
   if (token == null) {
     log.critical("Token should be defined", []);
@@ -560,7 +570,12 @@ export function handleTokenSale(event: TokenSale): void {
   token.permissionedAddress = possiblePermissionedAddress;
 
   buyer.buys = buyer.buys.concat([sale.id]);
+  buyer.totalBuysAmount = buyer.totalBuysAmount.plus(salePrice);
+  buyer.numberOfBuys = buyer.numberOfBuys.plus(BigInt.fromI32(1));
+
   seller.sells = seller.sells.concat([sale.id]);
+  seller.totalSalesAmount = seller.totalSalesAmount.plus(salePrice);
+  seller.numberOfSells = seller.numberOfSells.plus(BigInt.fromI32(1));
 
   buyer.save();
   seller.save();
@@ -627,6 +642,7 @@ export function handleTransfer(event: Transfer): void {
   );
   token.permissionedAddress = possiblePermissionedAddress;
   token.owner = to.id;
+  token.previousOwner = from.id;
   token.currentBuyPrice = BigInt.fromI32(0); // Since transfer overrides this to zero?
   token.lastTransfer = transfer.id;
   token.allTransfers = token.allTransfers.concat([transfer.id]);
@@ -637,15 +653,19 @@ export function handleTransfer(event: Transfer): void {
       : token.pastOwners;
 
   if (token.isMaster) {
-    to.ownedMasters =
-      to.ownedMasters.indexOf(token.id + "-Master") === -1
-        ? to.ownedMasters.concat([token.id + "-Master"])
-        : to.ownedMasters;
+    if (to.ownedMasters.indexOf(token.id + "-Master") === -1) {
+      to.ownedMasters = to.ownedMasters.concat([token.id + "-Master"]);
+      to.numberOfOwnedMasters = to.numberOfOwnedMasters.plus(BigInt.fromI32(1));
+    }
   } else {
-    to.ownerControllers =
-      to.ownerControllers.indexOf(token.id + "-Controller") === -1
-        ? to.ownerControllers.concat([token.id + "-Controller"])
-        : to.ownerControllers;
+    if (to.ownerControllers.indexOf(token.id + "-Controller") === -1) {
+      to.ownerControllers = to.ownerControllers.concat([
+        token.id + "-Controller",
+      ]);
+      to.numberOfOwnedControllers = to.numberOfOwnedControllers.plus(
+        BigInt.fromI32(1)
+      );
+    }
   }
 
   to.save();
