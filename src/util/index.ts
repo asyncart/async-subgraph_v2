@@ -3,8 +3,6 @@ import {
   StateChange,
   EventParam,
   EventParams,
-  Owner,
-  Artwork,
   GlobalState,
   Token,
   TokenMaster,
@@ -26,6 +24,8 @@ export function getOrInitialiseGlobalState(
   if (globalState == null) {
     globalState = new GlobalState("MASTER");
     globalState.latestMasterTokenId = BigInt.fromI32(0);
+    globalState.totalSaleAmount = BigInt.fromI32(0);
+    globalState.tokenMasterIDs = [BigInt.fromI32(0)];
     globalState.currentExpectedTokenSupply = asyncContract.expectedTokenSupply();
     globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
     globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
@@ -58,6 +58,16 @@ export function createOrFetchUserString(userAddress: string): User | null {
   if (user == null) {
     user = new User(userAddress);
     user.isArtist = false;
+    user.totalSalesAmount = BigInt.fromI32(0);
+    user.totalBuysAmount = BigInt.fromI32(0);
+    user.numberOfBuys = BigInt.fromI32(0);
+    user.numberOfSells = BigInt.fromI32(0);
+    user.numberOfBids = BigInt.fromI32(0);
+    user.numberOfLayerUpdates = BigInt.fromI32(0);
+    user.numberOfCreatedMasters = BigInt.fromI32(0);
+    user.numberOfCreatedControllers = BigInt.fromI32(0);
+    user.numberOfOwnedMasters = BigInt.fromI32(0);
+    user.numberOfOwnedControllers = BigInt.fromI32(0);
   }
 
   return user;
@@ -88,16 +98,32 @@ export function populateTokenUniqueCreators(
       if (tokenCreator.value.toHexString() != ZERO_ADDRESS) {
         // Get the user
         let user = createOrFetchUserBytes(tokenCreator.value);
-        token.uniqueTokenCreators = token.uniqueTokenCreators.concat([user.id]);
+        token.uniqueTokenCreators =
+          token.uniqueTokenCreators.indexOf(user.id) === -1
+            ? token.uniqueTokenCreators.concat([user.id])
+            : token.uniqueTokenCreators;
+
         user.isArtist = true;
         if (token.isMaster) {
-          user.createdMasters = user.createdMasters.concat([
-            token.id + "-Master",
-          ]);
+          if (user.createdMasters.indexOf(token.id + "-Master") === -1) {
+            user.createdMasters = user.createdMasters.concat([
+              token.id + "-Master",
+            ]);
+            user.numberOfCreatedMasters = user.numberOfCreatedMasters.plus(
+              BigInt.fromI32(1)
+            );
+          }
         } else {
-          user.createdControllers = user.createdControllers.concat([
-            token.id + "-Controller",
-          ]);
+          if (
+            user.createdControllers.indexOf(token.id + "-Controller") === -1
+          ) {
+            user.createdControllers = user.createdControllers.concat([
+              token.id + "-Controller",
+            ]);
+            user.numberOfCreatedControllers = user.numberOfCreatedControllers.plus(
+              BigInt.fromI32(1)
+            );
+          }
         }
         user.save();
 
@@ -143,40 +169,69 @@ export function getPermissionedAddress(
   }
 }
 
-// Check with conlan this is how previous tokens behaved
-// Assume this is the same
-export function linkMasterAndControllers(tokenId: BigInt): void {
-  // Function links master to layers and visa versa
+export function trySetMasterLayersAndLinks(): void {
+  let globalState = GlobalState.load("MASTER");
+  let tokenMasters: Array<BigInt> = globalState.tokenMasterIDs;
+  for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
+    let tokenId: BigInt = tokenMasters[j];
 
-  let token = Token.load(tokenId.toString());
-  if (token == null) {
-    log.critical("This should be defined", []);
-  }
-  if (token.isMaster) {
-    let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
-    if (tokenMaster == null) {
-      log.critical("This should be defined", []);
-    }
-    if (tokenMaster.layers == null) {
+    let token = Token.load(tokenId.toString());
+    if (token == null) {
+      if (tokenId.equals(BigInt.fromI32(0))) {
+        log.info("Passing", []);
+      } else {
+        log.critical("This should be defined", []);
+      }
+    } else {
+      let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
+      if (tokenMaster == null) {
+        log.critical("This should be defined", []);
+      }
+      //log.warning("Population attempt", []);
+
+      if (
+        tokenMaster.layerCount.equals(
+          BigInt.fromI32(tokenMaster.layers.length)
+        ) &&
+        tokenMaster.layerCount.gt(BigInt.fromI32(0))
+      ) {
+        log.info("Already populated...", []);
+        continue;
+      }
       // Lets try populate if all the layers exist!
-      for (let i = 0; i < tokenMaster.layerCount.toI32(); i++) {
+      let index = token.tokenId.plus(BigInt.fromI32(1));
+      while (true) {
         let tokenController = TokenController.load(
-          tokenId.plus(BigInt.fromI32(i + 1)).toString() + "-Controller"
+          index.toString() + "-Controller"
         );
         if (tokenController == null) {
-          log.warning("Layer not around yet", []);
-          return;
+          let potentialMaster = TokenMaster.load(index.toString() + "-Master");
+          if (potentialMaster == null) {
+            log.warning(
+              "Layer of master not upgraded. Cannot save layer count for master token: " +
+                tokenMaster.id,
+              []
+            );
+          } else {
+            tokenMaster.layerCount = index
+              .minus(tokenId)
+              .minus(BigInt.fromI32(1));
+          }
+          tokenMaster.save();
+          break;
         } else {
-          tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
+          tokenMaster.layers =
+            tokenMaster.layers.indexOf(tokenController.id) === -1
+              ? tokenMaster.layers.concat([tokenController.id])
+              : tokenMaster.layers;
           tokenController.associatedMasterToken = tokenMaster.id;
           tokenController.save();
         }
+        index = index.plus(BigInt.fromI32(1));
       }
-      tokenMaster.save();
     }
   }
 }
-
 /////////////////////////////////////////////
 //////////// CREATE TOKENS /////////////////////
 ////////////////////////////////////////////
@@ -193,13 +248,13 @@ function createToken(
   token.platformFirstSalePercentage = platformFirstSalePercentage;
   token.platformSecondSalePercentage = platformSecondSalePercentage;
   token.currentBuyPrice = BigInt.fromI32(0);
-  token.lastSalePrice = BigInt.fromI32(0);
   token.numberOfSales = BigInt.fromI32(0);
   token.tokenDidHaveFirstSale = false;
   return token;
 }
 
 function createMaster(
+  asyncContract: Contract,
   tokenId: BigInt,
   platformFirstSalePercentage: BigInt,
   platformSecondSalePercentage: BigInt,
@@ -211,6 +266,13 @@ function createMaster(
     platformFirstSalePercentage,
     platformSecondSalePercentage
   );
+
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  globalState.tokenMasterIDs =
+    globalState.tokenMasterIDs.indexOf(tokenId) === -1
+      ? globalState.tokenMasterIDs.concat([tokenId])
+      : globalState.tokenMasterIDs;
+  globalState.save();
 
   let tokenMasterObject = new TokenMaster(tokenId.toString() + "-Master");
   tokenMasterObject.layerCount = layers;
@@ -239,6 +301,7 @@ function createController(
   );
   tokenControllerObject.numControlLevers = BigInt.fromI32(0);
   tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
+  tokenControllerObject.numberOfUpdates = BigInt.fromI32(0);
   tokenControllerObject.isSetup = false;
   tokenControllerObject.tokenDetails = token.id;
   if (!masterTokenId.equals(BigInt.fromI32(0))) {
@@ -265,6 +328,7 @@ export function createTokensFromMasterTokenId(
 
   // Create the master token
   let masterToken = createMaster(
+    asyncContract,
     tokenStart,
     platformFirstSalePercentage,
     platformSecondSalePercentage,
@@ -283,7 +347,9 @@ export function createTokensFromMasterTokenId(
       tokenStart
     );
     token.save();
-    masterTokenObject.layers = masterTokenObject.layers.concat([token.id]);
+    masterTokenObject.layers = masterTokenObject.layers.concat([
+      tokenIdIndex.toString() + "-Controller",
+    ]);
   }
   masterTokenObject.save();
 }
@@ -342,6 +408,7 @@ export function getOrInitialiseToken(
       }
     } else {
       token = createMaster(
+        asyncContract,
         tokenId,
         BigInt.fromI32(0),
         BigInt.fromI32(0),
@@ -414,11 +481,18 @@ function populateTokenHelper(
   );
   token.tokenDidHaveFirstSale = asyncContract.tokenDidHaveFirstSale(tokenId);
 
-  // token.permissionedAddress = getPermissionedAddress(
-  //   asyncContract,
-  //   tokenId,
-  //   currentOwner.value // cast to bytes
-  // );
+  let uri = asyncContract.try_tokenURI(tokenId);
+  if (uri.reverted) {
+    log.warning("uri does not exist yet", []);
+  } else {
+    token.uri = uri.value;
+  }
+
+  token.permissionedAddress = getPermissionedAddress(
+    asyncContract,
+    tokenId,
+    currentOwner.value // cast to bytes
+  );
 
   // Populate currentBid ->NOTE THIS will be populated by handler. No need to pull
   // Populate current buy price -> NOTE THIS will be populated by handler. No need to pull
@@ -510,7 +584,13 @@ export function getOrInitialiseLever(
     lever.maxValue = BigInt.fromI32(0);
     lever.currentValue = BigInt.fromI32(0);
     lever.previousValue = BigInt.fromI32(0);
-    lever.layer = tokenId.toString() + "-Controller";
+    lever.numberOfUpdates = BigInt.fromI32(0);
+    let tokenController = TokenController.load(
+      tokenId.toString() + "-Controller"
+    );
+    lever.layer = tokenController.id;
+    tokenController.levers = tokenController.levers.concat([lever.id]);
+    tokenController.save();
   }
   return lever;
 }
@@ -523,8 +603,8 @@ export function getOrInitialiseStateChange(txId: string): StateChange | null {
   if (stateChange == null) {
     stateChange = new StateChange(txId);
     stateChange.txEventParamList = [];
-    stateChange.ownerChanges = [];
-    stateChange.artworkChanges = [];
+    stateChange.userChanges = [];
+    stateChange.tokenChanges = [];
 
     return stateChange;
   } else {
@@ -581,7 +661,7 @@ function txStateChangeHelper(
   eventName: string,
   eventParamArray: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   contractVersion: i32
 ): void {
   let stateChange = getOrInitialiseStateChange(txHash.toHex());
@@ -603,16 +683,16 @@ function txStateChangeHelper(
     eventParams.id,
   ]);
   for (let i = 0, len = changedOwners.length; i < len; i++) {
-    stateChange.ownerChanges =
-      stateChange.ownerChanges.indexOf(changedOwners[i]) === -1
-        ? stateChange.ownerChanges.concat([changedOwners[i]])
-        : stateChange.ownerChanges;
+    stateChange.userChanges =
+      stateChange.userChanges.indexOf(changedOwners[i]) === -1
+        ? stateChange.userChanges.concat([changedOwners[i]])
+        : stateChange.userChanges;
   }
-  for (let i = 0, len = changedArtworks.length; i < len; i++) {
-    stateChange.artworkChanges =
-      stateChange.artworkChanges.indexOf(changedArtworks[i]) === -1
-        ? stateChange.artworkChanges.concat([changedArtworks[i]])
-        : stateChange.artworkChanges;
+  for (let i = 0, len = changedTokens.length; i < len; i++) {
+    stateChange.tokenChanges =
+      stateChange.tokenChanges.indexOf(changedTokens[i]) === -1
+        ? stateChange.tokenChanges.concat([changedTokens[i]])
+        : stateChange.tokenChanges;
   }
   stateChange.contractVersion = contractVersion;
   stateChange.save();
@@ -626,7 +706,7 @@ export function saveEventToStateChange(
   parameterNames: Array<string>,
   parameterTypes: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   version: i32
 ): void {
   let eventParamsArr: Array<string> = createEventParams(
@@ -642,7 +722,7 @@ export function saveEventToStateChange(
     eventName,
     eventParamsArr,
     changedOwners,
-    changedArtworks,
+    changedTokens,
     version
   );
 }
