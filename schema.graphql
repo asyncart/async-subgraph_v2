@@ -18,6 +18,7 @@ type GlobalState @entity {
 type Token @entity {
   id: ID! # token id
   owner: User # No owner if its only whitelisted
+  previousOwner: User
   tokenId: BigInt!
   uri: String # Will be empty if only whitelisted
   isMaster: Boolean!
@@ -80,6 +81,7 @@ type LayerUpdate @entity {
   priorityTip: BigInt!
   layer: TokenController!
   leversUpdated: [TokenControlLever!]!
+  userPerformingUpdate: User!
 }
 
 #####################################
@@ -88,6 +90,17 @@ type LayerUpdate @entity {
 type User @entity {
   id: ID! # users address
   isArtist: Boolean!
+  totalSalesAmount: BigInt!
+  totalBuysAmount: BigInt!
+  numberOfBuys: BigInt!
+  numberOfSells: BigInt!
+  numberOfBids: BigInt!
+  numberOfLayerUpdates: BigInt!
+  numberOfCreatedMasters: BigInt!
+  numberOfCreatedControllers: BigInt!
+  numberOfOwnedMasters: BigInt!
+  numberOfOwnedControllers: BigInt!
+  layerUpdates: [LayerUpdate!]
   bids: [Bid!]
   buys: [Sale!]
   sells: [Sale!]
