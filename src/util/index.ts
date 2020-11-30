@@ -58,6 +58,16 @@ export function createOrFetchUserString(userAddress: string): User | null {
   if (user == null) {
     user = new User(userAddress);
     user.isArtist = false;
+    user.totalSalesAmount = BigInt.fromI32(0);
+    user.totalBuysAmount = BigInt.fromI32(0);
+    user.numberOfBuys = BigInt.fromI32(0);
+    user.numberOfSells = BigInt.fromI32(0);
+    user.numberOfBids = BigInt.fromI32(0);
+    user.numberOfLayerUpdates = BigInt.fromI32(0);
+    user.numberOfCreatedMasters = BigInt.fromI32(0);
+    user.numberOfCreatedControllers = BigInt.fromI32(0);
+    user.numberOfOwnedMasters = BigInt.fromI32(0);
+    user.numberOfOwnedControllers = BigInt.fromI32(0);
   }
 
   return user;
@@ -95,15 +105,25 @@ export function populateTokenUniqueCreators(
 
         user.isArtist = true;
         if (token.isMaster) {
-          user.createdMasters =
-            user.createdMasters.indexOf(token.id + "-Master") === -1
-              ? user.createdMasters.concat([token.id + "-Master"])
-              : user.createdMasters;
+          if (user.createdMasters.indexOf(token.id + "-Master") === -1) {
+            user.createdMasters = user.createdMasters.concat([
+              token.id + "-Master",
+            ]);
+            user.numberOfCreatedMasters = user.numberOfCreatedMasters.plus(
+              BigInt.fromI32(1)
+            );
+          }
         } else {
-          user.createdControllers =
+          if (
             user.createdControllers.indexOf(token.id + "-Controller") === -1
-              ? user.createdControllers.concat([token.id + "-Controller"])
-              : user.createdControllers;
+          ) {
+            user.createdControllers = user.createdControllers.concat([
+              token.id + "-Controller",
+            ]);
+            user.numberOfCreatedControllers = user.numberOfCreatedControllers.plus(
+              BigInt.fromI32(1)
+            );
+          }
         }
         user.save();
 
@@ -175,7 +195,7 @@ export function trySetMasterLayersAndLinks(): void {
         ) &&
         tokenMaster.layerCount.gt(BigInt.fromI32(0))
       ) {
-        log.warning("Already populated...", []);
+        log.info("Already populated...", []);
         continue;
       }
       // Lets try populate if all the layers exist!
