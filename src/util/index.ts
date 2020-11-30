@@ -3,8 +3,6 @@ import {
   StateChange,
   EventParam,
   EventParams,
-  Owner,
-  Artwork,
   GlobalState,
   Token,
   TokenMaster,
@@ -60,6 +58,16 @@ export function createOrFetchUserString(userAddress: string): User | null {
   if (user == null) {
     user = new User(userAddress);
     user.isArtist = false;
+    user.totalSalesAmount = BigInt.fromI32(0);
+    user.totalBuysAmount = BigInt.fromI32(0);
+    user.numberOfBuys = BigInt.fromI32(0);
+    user.numberOfSells = BigInt.fromI32(0);
+    user.numberOfBids = BigInt.fromI32(0);
+    user.numberOfLayerUpdates = BigInt.fromI32(0);
+    user.numberOfCreatedMasters = BigInt.fromI32(0);
+    user.numberOfCreatedControllers = BigInt.fromI32(0);
+    user.numberOfOwnedMasters = BigInt.fromI32(0);
+    user.numberOfOwnedControllers = BigInt.fromI32(0);
   }
 
   return user;
@@ -97,15 +105,25 @@ export function populateTokenUniqueCreators(
 
         user.isArtist = true;
         if (token.isMaster) {
-          user.createdMasters =
-            user.createdMasters.indexOf(token.id + "-Master") === -1
-              ? user.createdMasters.concat([token.id + "-Master"])
-              : user.createdMasters;
+          if (user.createdMasters.indexOf(token.id + "-Master") === -1) {
+            user.createdMasters = user.createdMasters.concat([
+              token.id + "-Master",
+            ]);
+            user.numberOfCreatedMasters = user.numberOfCreatedMasters.plus(
+              BigInt.fromI32(1)
+            );
+          }
         } else {
-          user.createdControllers =
+          if (
             user.createdControllers.indexOf(token.id + "-Controller") === -1
-              ? user.createdControllers.concat([token.id + "-Controller"])
-              : user.createdControllers;
+          ) {
+            user.createdControllers = user.createdControllers.concat([
+              token.id + "-Controller",
+            ]);
+            user.numberOfCreatedControllers = user.numberOfCreatedControllers.plus(
+              BigInt.fromI32(1)
+            );
+          }
         }
         user.save();
 
@@ -151,52 +169,7 @@ export function getPermissionedAddress(
   }
 }
 
-// Check with conlan this is how previous tokens behaved
-// Assume this is the same
-export function linkMasterAndControllers(): void {
-  let globalState = GlobalState.load("MASTER");
-  let tokenMasters = globalState.tokenMasterIDs;
-  for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
-    let tokenId: BigInt = tokenMasters[j];
-    let token = Token.load(tokenId.toString());
-    if (token == null) {
-      if (tokenId.equals(BigInt.fromI32(0))) {
-        return;
-      } else {
-        log.critical("This should be defined", []);
-      }
-    }
-    if (token.isMaster) {
-      let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
-      if (tokenMaster == null) {
-        log.critical("This should be defined", []);
-      }
-      if (tokenMaster.layers == null) {
-        // Lets try populate if all the layers exist!
-        for (let i = 0; i < tokenMaster.layerCount.toI32(); i++) {
-          let tokenController = TokenController.load(
-            tokenId.plus(BigInt.fromI32(i + 1)).toString() + "-Controller"
-          );
-          if (tokenController == null) {
-            log.warning("Layer not around yet", []);
-            return;
-          } else {
-            //tokenMaster.layers = tokenMaster.layers.concat([tokenController.id]);
-            tokenMaster.layers =
-              tokenMaster.layers.indexOf(tokenController.id) === -1
-                ? tokenMaster.layers.concat([tokenController.id])
-                : tokenMaster.layers;
-            tokenController.associatedMasterToken = tokenMaster.id;
-            tokenController.save();
-          }
-        }
-        tokenMaster.save();
-      }
-    }
-  }
-}
-
-export function trySetMasterLayers(): void {
+export function trySetMasterLayersAndLinks(): void {
   let globalState = GlobalState.load("MASTER");
   let tokenMasters: Array<BigInt> = globalState.tokenMasterIDs;
   for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
@@ -205,43 +178,56 @@ export function trySetMasterLayers(): void {
     let token = Token.load(tokenId.toString());
     if (token == null) {
       if (tokenId.equals(BigInt.fromI32(0))) {
-        return;
+        log.info("Passing", []);
       } else {
         log.critical("This should be defined", []);
       }
-    }
-    if (token.isMaster) {
+    } else {
       let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
       if (tokenMaster == null) {
         log.critical("This should be defined", []);
       }
-      if (tokenMaster.layers == null) {
-        if (tokenMaster.layerCount.equals(BigInt.fromI32(0))) {
-          // Lets try populate if all the layers exist!
-          let index = token.tokenId.plus(BigInt.fromI32(1));
-          while (true) {
-            let tokenController = TokenController.load(
-              index.toString() + "-Controller"
+      //log.warning("Population attempt", []);
+
+      if (
+        tokenMaster.layerCount.equals(
+          BigInt.fromI32(tokenMaster.layers.length)
+        ) &&
+        tokenMaster.layerCount.gt(BigInt.fromI32(0))
+      ) {
+        log.info("Already populated...", []);
+        continue;
+      }
+      // Lets try populate if all the layers exist!
+      let index = token.tokenId.plus(BigInt.fromI32(1));
+      while (true) {
+        let tokenController = TokenController.load(
+          index.toString() + "-Controller"
+        );
+        if (tokenController == null) {
+          let potentialMaster = TokenMaster.load(index.toString() + "-Master");
+          if (potentialMaster == null) {
+            log.warning(
+              "Layer of master not upgraded. Cannot save layer count for master token: " +
+                tokenMaster.id,
+              []
             );
-            if (tokenController == null) {
-              let potentialMaster = TokenMaster.load(
-                index.toString() + "-Master"
-              );
-              if (potentialMaster == null) {
-                log.info("Cannot save layer count yet.", []);
-                return;
-              } else {
-                break;
-              }
-            } else {
-              index = index.plus(BigInt.fromI32(1));
-            }
+          } else {
+            tokenMaster.layerCount = index
+              .minus(tokenId)
+              .minus(BigInt.fromI32(1));
           }
-          tokenMaster.layerCount = index
-            .minus(tokenId)
-            .minus(BigInt.fromI32(1));
           tokenMaster.save();
+          break;
+        } else {
+          tokenMaster.layers =
+            tokenMaster.layers.indexOf(tokenController.id) === -1
+              ? tokenMaster.layers.concat([tokenController.id])
+              : tokenMaster.layers;
+          tokenController.associatedMasterToken = tokenMaster.id;
+          tokenController.save();
         }
+        index = index.plus(BigInt.fromI32(1));
       }
     }
   }
@@ -361,7 +347,9 @@ export function createTokensFromMasterTokenId(
       tokenStart
     );
     token.save();
-    masterTokenObject.layers = masterTokenObject.layers.concat([token.id]);
+    masterTokenObject.layers = masterTokenObject.layers.concat([
+      tokenIdIndex.toString() + "-Controller",
+    ]);
   }
   masterTokenObject.save();
 }
@@ -615,8 +603,8 @@ export function getOrInitialiseStateChange(txId: string): StateChange | null {
   if (stateChange == null) {
     stateChange = new StateChange(txId);
     stateChange.txEventParamList = [];
-    stateChange.ownerChanges = [];
-    stateChange.artworkChanges = [];
+    stateChange.userChanges = [];
+    stateChange.tokenChanges = [];
 
     return stateChange;
   } else {
@@ -673,7 +661,7 @@ function txStateChangeHelper(
   eventName: string,
   eventParamArray: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   contractVersion: i32
 ): void {
   let stateChange = getOrInitialiseStateChange(txHash.toHex());
@@ -695,16 +683,16 @@ function txStateChangeHelper(
     eventParams.id,
   ]);
   for (let i = 0, len = changedOwners.length; i < len; i++) {
-    stateChange.ownerChanges =
-      stateChange.ownerChanges.indexOf(changedOwners[i]) === -1
-        ? stateChange.ownerChanges.concat([changedOwners[i]])
-        : stateChange.ownerChanges;
+    stateChange.userChanges =
+      stateChange.userChanges.indexOf(changedOwners[i]) === -1
+        ? stateChange.userChanges.concat([changedOwners[i]])
+        : stateChange.userChanges;
   }
-  for (let i = 0, len = changedArtworks.length; i < len; i++) {
-    stateChange.artworkChanges =
-      stateChange.artworkChanges.indexOf(changedArtworks[i]) === -1
-        ? stateChange.artworkChanges.concat([changedArtworks[i]])
-        : stateChange.artworkChanges;
+  for (let i = 0, len = changedTokens.length; i < len; i++) {
+    stateChange.tokenChanges =
+      stateChange.tokenChanges.indexOf(changedTokens[i]) === -1
+        ? stateChange.tokenChanges.concat([changedTokens[i]])
+        : stateChange.tokenChanges;
   }
   stateChange.contractVersion = contractVersion;
   stateChange.save();
@@ -718,7 +706,7 @@ export function saveEventToStateChange(
   parameterNames: Array<string>,
   parameterTypes: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   version: i32
 ): void {
   let eventParamsArr: Array<string> = createEventParams(
@@ -734,7 +722,7 @@ export function saveEventToStateChange(
     eventName,
     eventParamsArr,
     changedOwners,
-    changedArtworks,
+    changedTokens,
     version
   );
 }
