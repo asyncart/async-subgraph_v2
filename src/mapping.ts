@@ -35,18 +35,37 @@ import {
   getOrInitialiseToken,
   refreshGlobalState,
   createOrFetchUserString,
-  linkMasterAndControllers,
+  trySetMasterLayersAndLinks,
 } from "./util";
 
 export function handleArtistSecondSalePercentUpdated(
   event: ArtistSecondSalePercentUpdated
 ): void {
+  let txTimestamp = event.block.timestamp;
+  let blockNumber = event.block.number;
   let newSecondPercentage = event.params.artistSecondPercentage;
   let asyncContract = Contract.bind(event.address);
   let globalState = getOrInitialiseGlobalState(asyncContract);
 
   globalState.artistSecondSalePercentage = newSecondPercentage;
   globalState.save();
+
+  let eventParamValues: Array<string> = [newSecondPercentage.toString()];
+  let eventParamNames: Array<string> = ["artistSecondPercentage"];
+  let eventParamTypes: Array<string> = ["uint256"];
+
+  saveEventToStateChange(
+    event.transaction.hash,
+    txTimestamp,
+    blockNumber,
+    "ArtistSecondSalePercentUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [],
+    0
+  );
 }
 
 export function handleBidProposed(event: BidProposed): void {
@@ -83,13 +102,35 @@ export function handleBidProposed(event: BidProposed): void {
     }
 
     user.bids = user.bids.concat([bid.id]);
+    user.numberOfBids = user.numberOfBids.plus(BigInt.fromI32(1));
     token.currentBid = bid.id;
 
     user.save();
     token.save();
     bid.save();
-    linkMasterAndControllers(tokenId);
+    trySetMasterLayersAndLinks();
   }
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    bidAmount.toString(),
+    bidder.toHex(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "bidAmount", "bidder"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "BidProposed",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [user.id],
+    [token.id],
+    0
+  );
 }
 
 export function handleBidWithdrawn(event: BidWithdrawn): void {
@@ -116,6 +157,23 @@ export function handleBidWithdrawn(event: BidWithdrawn): void {
       token.save();
     }
   }
+
+  let eventParamValues: Array<string> = [tokenId.toString()];
+  let eventParamNames: Array<string> = ["tokenId"];
+  let eventParamTypes: Array<string> = ["uint256"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "BidWithdrawn",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleBuyPriceSet(event: BuyPriceSet): void {
@@ -132,11 +190,30 @@ export function handleBuyPriceSet(event: BuyPriceSet): void {
   let token = getOrInitialiseToken(asyncContract, tokenId);
   if (token == null) {
     log.warning("Token should be defined", []);
-  } else {
-    token.currentBuyPrice = buyPrice;
-    token.save();
-    linkMasterAndControllers(tokenId);
   }
+  token.currentBuyPrice = buyPrice;
+  token.save();
+  trySetMasterLayersAndLinks();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    buyPrice.toString(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "price"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "BuyPriceSet",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
@@ -209,13 +286,72 @@ export function handleControlLeverUpdated(event: ControlLeverUpdated): void {
   ]);
   controllerToken.lastUpdate = layerUpdate.id;
 
+  let owner = User.load(token.owner);
+  owner.layerUpdates = owner.layerUpdates.concat([layerUpdate.id]);
+  owner.numberOfLayerUpdates = owner.numberOfLayerUpdates.plus(
+    BigInt.fromI32(1)
+  );
+  layerUpdate.userPerformingUpdate = owner.id;
+
   layerUpdate.save();
   controllerToken.save();
+  owner.save();
   token.save();
+
+  let leverIdsString: Array<string> = [];
+  let previousValuesString: Array<string> = [];
+  let updatedValuesString: Array<string> = [];
+
+  for (let i = 0; i < leverIds.length; i++) {
+    leverIdsString = leverIdsString.concat([leverIds[i].toString()]);
+    previousValuesString = previousValuesString.concat([
+      previousValues[i].toString(),
+    ]);
+    updatedValuesString = updatedValuesString.concat([
+      updatedValues[i].toString(),
+    ]);
+  }
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    priorityTip.toString(),
+    numRemainingUpdates.toString(),
+    leverIdsString.toString(),
+    previousValuesString.toString(),
+    updatedValuesString.toString(),
+  ];
+  let eventParamNames: Array<string> = [
+    "tokenId",
+    "priorityTip",
+    "numRemainingUpdates",
+    "leverIds",
+    "previousValues",
+    "updatedValues",
+  ];
+  let eventParamTypes: Array<string> = [
+    "uint256",
+    "uint256",
+    "int256",
+    "uint256[]",
+    "int256[]",
+    "int256[]",
+  ];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "ControlLeverUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [token.owner],
+    [token.id],
+    0
+  );
 }
 
 export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
-  //log.warning("Whitelist", []);
   let txTimestamp = event.block.timestamp;
   let blockNumber = event.block.number;
   let txHash = event.transaction.hash;
@@ -235,6 +371,27 @@ export function handleCreatorWhitelisted(event: CreatorWhitelisted): void {
   globalState.save();
 
   createTokensFromMasterTokenId(asyncContract, tokenId, layerCount);
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    layerCount.toString(),
+    artistAddressString,
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "layerCount", "creator"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "CreatorWhitelisted",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [],
+    0
+  );
 }
 
 export function handlePermissionUpdated(event: PermissionUpdated): void {
@@ -260,7 +417,32 @@ export function handlePermissionUpdated(event: PermissionUpdated): void {
     token.permissionedAddress = permissioned;
     token.save();
   }
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayersAndLinks();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    addressOfGranter.toHex(),
+    permissioned.toHex(),
+  ];
+  let eventParamNames: Array<string> = [
+    "tokenId",
+    "tokenOwner",
+    "permissioned",
+  ];
+  let eventParamTypes: Array<string> = ["uint256", "address", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "PermissionUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handlePlatformAddressUpdated(
@@ -295,7 +477,32 @@ export function handlePlatformSalePercentageUpdated(
   token.platformFirstSalePercentage = platformFirstPercentage;
   token.platformSecondSalePercentage = platformSecondPercentage;
   token.save();
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayersAndLinks();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    platformFirstPercentage.toString(),
+    platformSecondPercentage.toString(),
+  ];
+  let eventParamNames: Array<string> = [
+    "tokenId",
+    "platformFirstPercentage",
+    "platformSecondPercentage",
+  ];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "uint256"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "PlatformSalePercentageUpdated",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleTokenSale(event: TokenSale): void {
@@ -311,12 +518,13 @@ export function handleTokenSale(event: TokenSale): void {
   let globalState = getOrInitialiseGlobalState(asyncContract);
   globalState.totalSaleAmount = globalState.totalSaleAmount.plus(salePrice);
 
-  let buyer = createOrFetchUserString(_buyer.toHexString());
+  let buyer = createOrFetchUserString(_buyer.toHex());
   // Edge case, the token isn't intialised. Then token.owner would be set
   // to current owner which is already now the buyer.
   // No straight forward fix. Ignore for now.
   let token = getOrInitialiseToken(asyncContract, tokenId);
-  let seller = User.load(token.owner);
+  // SINCE transfer event is already called, the previous token owner is actually the seller
+  let seller = User.load(token.previousOwner);
 
   if (token == null) {
     log.critical("Token should be defined", []);
@@ -361,24 +569,41 @@ export function handleTokenSale(event: TokenSale): void {
   );
   token.permissionedAddress = possiblePermissionedAddress;
 
-  // This is happening on transfer event
-  // if (token.isMaster) {
-  //   buyer.ownedMasters = buyer.ownedMasters.concat([token.id + "-Master"]);
-  // } else {
-  //   buyer.ownerControllers = buyer.ownerControllers.concat([
-  //     token.id + "-Controller",
-  //   ]);
-  // }
-
   buyer.buys = buyer.buys.concat([sale.id]);
+  buyer.totalBuysAmount = buyer.totalBuysAmount.plus(salePrice);
+  buyer.numberOfBuys = buyer.numberOfBuys.plus(BigInt.fromI32(1));
+
   seller.sells = seller.sells.concat([sale.id]);
+  seller.totalSalesAmount = seller.totalSalesAmount.plus(salePrice);
+  seller.numberOfSells = seller.numberOfSells.plus(BigInt.fromI32(1));
 
   buyer.save();
   seller.save();
   sale.save();
   token.save();
   globalState.save();
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayersAndLinks();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    salePrice.toString(),
+    _buyer.toHexString(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "salePrice", "_buyer"];
+  let eventParamTypes: Array<string> = ["uint256", "uint256", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "TokenSale",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
 export function handleTransfer(event: Transfer): void {
@@ -417,6 +642,7 @@ export function handleTransfer(event: Transfer): void {
   );
   token.permissionedAddress = possiblePermissionedAddress;
   token.owner = to.id;
+  token.previousOwner = from.id;
   token.currentBuyPrice = BigInt.fromI32(0); // Since transfer overrides this to zero?
   token.lastTransfer = transfer.id;
   token.allTransfers = token.allTransfers.concat([transfer.id]);
@@ -427,44 +653,49 @@ export function handleTransfer(event: Transfer): void {
       : token.pastOwners;
 
   if (token.isMaster) {
-    to.ownedMasters =
-      to.ownedMasters.indexOf(token.id + "-Master") === -1
-        ? to.ownedMasters.concat([token.id + "-Master"])
-        : to.ownedMasters;
+    if (to.ownedMasters.indexOf(token.id + "-Master") === -1) {
+      to.ownedMasters = to.ownedMasters.concat([token.id + "-Master"]);
+      to.numberOfOwnedMasters = to.numberOfOwnedMasters.plus(BigInt.fromI32(1));
+    }
   } else {
-    to.ownerControllers =
-      to.ownerControllers.indexOf(token.id + "-Controller") === -1
-        ? to.ownerControllers.concat([token.id + "-Controller"])
-        : to.ownerControllers;
+    if (to.ownerControllers.indexOf(token.id + "-Controller") === -1) {
+      to.ownerControllers = to.ownerControllers.concat([
+        token.id + "-Controller",
+      ]);
+      to.numberOfOwnedControllers = to.numberOfOwnedControllers.plus(
+        BigInt.fromI32(1)
+      );
+    }
   }
 
   to.save();
   from.save();
   transfer.save();
   token.save();
-  linkMasterAndControllers(tokenId);
+  trySetMasterLayersAndLinks();
+
+  let eventParamValues: Array<string> = [
+    tokenId.toString(),
+    _from.toHexString(),
+    _to.toHexString(),
+  ];
+  let eventParamNames: Array<string> = ["tokenId", "from", "to"];
+  let eventParamTypes: Array<string> = ["uint256", "address", "address"];
+
+  saveEventToStateChange(
+    txHash,
+    txTimestamp,
+    blockNumber,
+    "Transfer",
+    eventParamValues,
+    eventParamNames,
+    eventParamTypes,
+    [],
+    [token.id],
+    0
+  );
 }
 
-export function handleApproval(event: Approval): void {
-  // let owner = event.params.owner;
-  // let ownerString = owner.toHex();
-  // let txTimestamp = event.block.timestamp;
-  // let blockNumber = event.block.number;
-  // let eventParamValues: Array<string> = [ownerString];
-  // let eventParamNames: Array<string> = ["owner"];
-  // let eventParamTypes: Array<string> = ["address"];
-  // saveEventToStateChange(
-  //   event.transaction.hash,
-  //   txTimestamp,
-  //   blockNumber,
-  //   "Approval",
-  //   eventParamValues,
-  //   eventParamNames,
-  //   eventParamTypes,
-  //   [],
-  //   [],
-  //   0
-  // );
-}
+export function handleApproval(event: Approval): void {}
 
 export function handleApprovalForAll(event: ApprovalForAll): void {}
