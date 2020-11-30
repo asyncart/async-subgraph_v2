@@ -1,3 +1,6 @@
+#####################################
+####### GLOBAL STATE TOP LEVEL ######
+#####################################
 type GlobalState @entity {
   id: ID! #Singleton "MASTER"
   latestMasterTokenId: BigInt!
@@ -5,58 +8,145 @@ type GlobalState @entity {
   minBidIncreasePercent: BigInt!
   artistSecondSalePercentage: BigInt!
   platformAddress: Bytes!
+  totalSaleAmount: BigInt!
+  tokenMasterIDs: [BigInt!]!
 }
 
+#####################################
+####### TOKEN & DERIVED OBJECTS #####
+#####################################
 type Token @entity {
   id: ID! # token id
-  # creator: Artist!
+  owner: User # No owner if its only whitelisted
+  previousOwner: User
   tokenId: BigInt!
+  uri: String # Will be empty if only whitelisted
   isMaster: Boolean!
   tokenMaster: TokenMaster
   tokenController: TokenController
   currentBid: Bid
+  pastBids: [Bid!]
   platformFirstSalePercentage: BigInt!
   platformSecondSalePercentage: BigInt!
   currentBuyPrice: BigInt!
-  lastSalePrice: BigInt!
+  lastSale: Sale
+  allSales: [Sale!]
   numberOfSales: BigInt!
-  uniqueTokenCreators: [Bytes!]
-  # Permissioned stuff here
+  lastTransfer: TokenTransfer
+  allTransfers: [TokenTransfer!]
+  uniqueTokenCreators: [User!]
+  pastOwners: [User!]
+  tokenDidHaveFirstSale: Boolean!
+  permissionedAddress: Bytes
 }
 
 type TokenMaster @entity {
   id: ID! # token id - "Master"
   layerCount: BigInt!
+  tokenDetails: Token!
+  layers: [TokenController!] # These are difficult to define as non-nullable depending on token migration order from v1
 }
 
 type TokenController @entity {
   id: ID! # token id - "Controller"
   numControlLevers: BigInt!
   numRemainingUpdates: BigInt!
+  numberOfUpdates: BigInt!
+  averageUpdateCost: BigInt
   isSetup: Boolean!
+  tokenDetails: Token!
+  associatedMasterToken: TokenMaster # These are difficult to define as non-nullable depending on token migration order from v1
+  levers: [TokenControlLever!] # will be null if not set up
+  lastUpdate: LayerUpdate
+  allUpdates: [LayerUpdate!]
 }
 
-type tokenControlLever @entity {
+type TokenControlLever @entity {
   id: ID! # token ID - token lever ID
+  numberOfUpdates: BigInt!
   minValue: BigInt!
   maxValue: BigInt!
   currentValue: BigInt!
+  previousValue: BigInt!
+  layer: TokenController!
+  latestUpdate: LayerUpdate
 }
 
-type Artist @entity {
-  id: ID! # artists address
+type LayerUpdate @entity {
+  id: ID! # token id - 'update number'
+  updateNumber: BigInt!
+  gasPrice: BigInt!
+  gasUsed: BigInt!
+  costInWei: BigInt!
+  priorityTip: BigInt!
+  layer: TokenController!
+  leversUpdated: [TokenControlLever!]!
+  userPerformingUpdate: User!
 }
 
+#####################################
+########## PLATFORM USERS ###########
+#####################################
+type User @entity {
+  id: ID! # users address
+  isArtist: Boolean!
+  totalSalesAmount: BigInt!
+  totalBuysAmount: BigInt!
+  numberOfBuys: BigInt!
+  numberOfSells: BigInt!
+  numberOfBids: BigInt!
+  numberOfLayerUpdates: BigInt!
+  numberOfCreatedMasters: BigInt!
+  numberOfCreatedControllers: BigInt!
+  numberOfOwnedMasters: BigInt!
+  numberOfOwnedControllers: BigInt!
+  layerUpdates: [LayerUpdate!]
+  bids: [Bid!]
+  buys: [Sale!]
+  sells: [Sale!]
+  createdMasters: [TokenMaster!]
+  createdControllers: [TokenController!]
+  ownedMasters: [TokenMaster!]
+  ownerControllers: [TokenController!]
+}
+
+#####################################
+########## SALES AND BIDS ###########
+#####################################
 type Bid @entity {
   id: ID! # tokenId - txhash
-  tokenId: BigInt!
+  tokenDetails: Token!
   bidAmount: BigInt!
-  bidder: Bytes! #Change to user object
+  bidder: User! #Change to user object
   bidTimestamp: BigInt!
   bidActive: Boolean!
   bidAccepted: Boolean!
+  BidWithdrawnTimestamp: BigInt
 }
 
+type Sale @entity {
+  id: ID! # tokenId - tokenSaleNumber (i.e. "1-3" Token1, 3rd sale)
+  tokenDetails: Token!
+  buyer: User!
+  seller: User!
+  salePrice: BigInt!
+  tokenSaleNumber: BigInt! # i.e. this was the 3rd sale of this token
+  saleTimestamp: BigInt!
+  isBidSale: Boolean!
+  bidDetails: Bid
+}
+
+type TokenTransfer @entity {
+  id: ID! # tokenId - tx timestamp
+  tokenDetails: Token!
+  to: User!
+  from: User!
+  timestamp: BigInt!
+}
+
+#####################################
+####### STATE AND EVENT CHANGES #####
+#####################################
 type EventParam @entity {
   id: ID!
   index: Int!
@@ -78,17 +168,7 @@ type StateChange @entity {
   timestamp: BigInt!
   blockNumber: BigInt!
   contractVersion: Int!
-  txEventList: [String!]! #call event logs or something
-  txEventParamListDeprecated: [String!]!
   txEventParamList: [EventParams!]
-  ownerChanges: [Owner!]!
-  artworkChanges: [Artwork!]!
-}
-
-type Owner @entity {
-  id: ID!
-}
-
-type Artwork @entity {
-  id: ID!
+  userChanges: [User!]
+  tokenChanges: [Token!]
 }
