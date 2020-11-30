@@ -3,8 +3,6 @@ import {
   StateChange,
   EventParam,
   EventParams,
-  Owner,
-  Artwork,
   GlobalState,
   Token,
   TokenMaster,
@@ -26,7 +24,9 @@ export function getOrInitialiseGlobalState(
   if (globalState == null) {
     globalState = new GlobalState("MASTER");
     globalState.latestMasterTokenId = BigInt.fromI32(0);
-    globalState.currentExpectedTokenSupply = BigInt.fromI32(0);
+    globalState.totalSaleAmount = BigInt.fromI32(0);
+    globalState.tokenMasterIDs = [BigInt.fromI32(0)];
+    globalState.currentExpectedTokenSupply = asyncContract.expectedTokenSupply();
     globalState.minBidIncreasePercent = asyncContract.minBidIncreasePercent();
     globalState.artistSecondSalePercentage = asyncContract.artistSecondSalePercentage();
     globalState.platformAddress = asyncContract.platformAddress();
@@ -50,17 +50,24 @@ export function refreshGlobalState(asyncContract: Contract): void {
 //////////// USER /////////////////////
 ////////////////////////////////////////
 function createOrFetchUserBytes(userAddress: Bytes): User | null {
-  let user = User.load(userAddress.toHexString());
-  if (user == null) {
-    user = new User(userAddress.toHexString());
-  }
-
-  return user;
+  return createOrFetchUserString(userAddress.toHexString());
 }
-function createOrFetchUserString(userAddress: string): User | null {
+
+export function createOrFetchUserString(userAddress: string): User | null {
   let user = User.load(userAddress);
   if (user == null) {
     user = new User(userAddress);
+    user.isArtist = false;
+    user.totalSalesAmount = BigInt.fromI32(0);
+    user.totalBuysAmount = BigInt.fromI32(0);
+    user.numberOfBuys = BigInt.fromI32(0);
+    user.numberOfSells = BigInt.fromI32(0);
+    user.numberOfBids = BigInt.fromI32(0);
+    user.numberOfLayerUpdates = BigInt.fromI32(0);
+    user.numberOfCreatedMasters = BigInt.fromI32(0);
+    user.numberOfCreatedControllers = BigInt.fromI32(0);
+    user.numberOfOwnedMasters = BigInt.fromI32(0);
+    user.numberOfOwnedControllers = BigInt.fromI32(0);
   }
 
   return user;
@@ -89,9 +96,38 @@ export function populateTokenUniqueCreators(
   {
     while (tokenCreator.reverted != true) {
       if (tokenCreator.value.toHexString() != ZERO_ADDRESS) {
-        token.uniqueTokenCreators = token.uniqueTokenCreators.concat([
-          tokenCreator.value,
-        ]);
+        // Get the user
+        let user = createOrFetchUserBytes(tokenCreator.value);
+        token.uniqueTokenCreators =
+          token.uniqueTokenCreators.indexOf(user.id) === -1
+            ? token.uniqueTokenCreators.concat([user.id])
+            : token.uniqueTokenCreators;
+
+        user.isArtist = true;
+        if (token.isMaster) {
+          if (user.createdMasters.indexOf(token.id + "-Master") === -1) {
+            user.createdMasters = user.createdMasters.concat([
+              token.id + "-Master",
+            ]);
+            user.numberOfCreatedMasters = user.numberOfCreatedMasters.plus(
+              BigInt.fromI32(1)
+            );
+          }
+        } else {
+          if (
+            user.createdControllers.indexOf(token.id + "-Controller") === -1
+          ) {
+            user.createdControllers = user.createdControllers.concat([
+              token.id + "-Controller",
+            ]);
+            user.numberOfCreatedControllers = user.numberOfCreatedControllers.plus(
+              BigInt.fromI32(1)
+            );
+          }
+        }
+        user.save();
+
+        // Try get next artist
         index = index + 1;
         tokenCreator = asyncContract.try_uniqueTokenCreators(
           tokenId,
@@ -133,6 +169,69 @@ export function getPermissionedAddress(
   }
 }
 
+export function trySetMasterLayersAndLinks(): void {
+  let globalState = GlobalState.load("MASTER");
+  let tokenMasters: Array<BigInt> = globalState.tokenMasterIDs;
+  for (let j = 0; j < globalState.tokenMasterIDs.length; j++) {
+    let tokenId: BigInt = tokenMasters[j];
+
+    let token = Token.load(tokenId.toString());
+    if (token == null) {
+      if (tokenId.equals(BigInt.fromI32(0))) {
+        log.info("Passing", []);
+      } else {
+        log.critical("This should be defined", []);
+      }
+    } else {
+      let tokenMaster = TokenMaster.load(tokenId.toString() + "-Master");
+      if (tokenMaster == null) {
+        log.critical("This should be defined", []);
+      }
+      //log.warning("Population attempt", []);
+
+      if (
+        tokenMaster.layerCount.equals(
+          BigInt.fromI32(tokenMaster.layers.length)
+        ) &&
+        tokenMaster.layerCount.gt(BigInt.fromI32(0))
+      ) {
+        log.info("Already populated...", []);
+        continue;
+      }
+      // Lets try populate if all the layers exist!
+      let index = token.tokenId.plus(BigInt.fromI32(1));
+      while (true) {
+        let tokenController = TokenController.load(
+          index.toString() + "-Controller"
+        );
+        if (tokenController == null) {
+          let potentialMaster = TokenMaster.load(index.toString() + "-Master");
+          if (potentialMaster == null) {
+            log.warning(
+              "Layer of master not upgraded. Cannot save layer count for master token: " +
+                tokenMaster.id,
+              []
+            );
+          } else {
+            tokenMaster.layerCount = index
+              .minus(tokenId)
+              .minus(BigInt.fromI32(1));
+          }
+          tokenMaster.save();
+          break;
+        } else {
+          tokenMaster.layers =
+            tokenMaster.layers.indexOf(tokenController.id) === -1
+              ? tokenMaster.layers.concat([tokenController.id])
+              : tokenMaster.layers;
+          tokenController.associatedMasterToken = tokenMaster.id;
+          tokenController.save();
+        }
+        index = index.plus(BigInt.fromI32(1));
+      }
+    }
+  }
+}
 /////////////////////////////////////////////
 //////////// CREATE TOKENS /////////////////////
 ////////////////////////////////////////////
@@ -141,38 +240,39 @@ function createToken(
   tokenId: BigInt,
   isMasterToken: boolean,
   platformFirstSalePercentage: BigInt,
-  platformSecondSalePercentage: BigInt,
-  owner: string
+  platformSecondSalePercentage: BigInt
 ): Token | null {
-  let newUser = createOrFetchUserString(owner);
-
   let token = new Token(tokenId.toString());
   token.tokenId = tokenId;
-  token.owner = newUser.id;
   token.isMaster = isMasterToken;
   token.platformFirstSalePercentage = platformFirstSalePercentage;
   token.platformSecondSalePercentage = platformSecondSalePercentage;
   token.currentBuyPrice = BigInt.fromI32(0);
-  token.lastSalePrice = BigInt.fromI32(0);
   token.numberOfSales = BigInt.fromI32(0);
   token.tokenDidHaveFirstSale = false;
   return token;
 }
 
 function createMaster(
+  asyncContract: Contract,
   tokenId: BigInt,
   platformFirstSalePercentage: BigInt,
   platformSecondSalePercentage: BigInt,
-  owner: string,
   layers: BigInt
 ): Token | null {
   let masterToken = createToken(
     tokenId,
     true,
     platformFirstSalePercentage,
-    platformSecondSalePercentage,
-    owner
+    platformSecondSalePercentage
   );
+
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  globalState.tokenMasterIDs =
+    globalState.tokenMasterIDs.indexOf(tokenId) === -1
+      ? globalState.tokenMasterIDs.concat([tokenId])
+      : globalState.tokenMasterIDs;
+  globalState.save();
 
   let tokenMasterObject = new TokenMaster(tokenId.toString() + "-Master");
   tokenMasterObject.layerCount = layers;
@@ -186,14 +286,14 @@ function createMaster(
 function createController(
   tokenId: BigInt,
   platformFirstSalePercentage: BigInt,
-  platformSecondSalePercentage: BigInt
+  platformSecondSalePercentage: BigInt,
+  masterTokenId: BigInt = BigInt.fromI32(0)
 ): Token | null {
   let token = createToken(
     tokenId,
     false,
     platformFirstSalePercentage,
-    platformSecondSalePercentage,
-    ZERO_ADDRESS
+    platformSecondSalePercentage
   );
 
   let tokenControllerObject = new TokenController(
@@ -201,8 +301,13 @@ function createController(
   );
   tokenControllerObject.numControlLevers = BigInt.fromI32(0);
   tokenControllerObject.numRemainingUpdates = BigInt.fromI32(0);
+  tokenControllerObject.numberOfUpdates = BigInt.fromI32(0);
   tokenControllerObject.isSetup = false;
   tokenControllerObject.tokenDetails = token.id;
+  if (!masterTokenId.equals(BigInt.fromI32(0))) {
+    tokenControllerObject.associatedMasterToken =
+      masterTokenId.toString() + "-Master";
+  }
   tokenControllerObject.save();
 
   token.tokenController = tokenControllerObject.id;
@@ -212,8 +317,7 @@ function createController(
 export function createTokensFromMasterTokenId(
   asyncContract: Contract,
   tokenStart: BigInt,
-  layers: BigInt,
-  owner: string
+  layers: BigInt
 ): void {
   let platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
     tokenStart
@@ -224,24 +328,32 @@ export function createTokensFromMasterTokenId(
 
   // Create the master token
   let masterToken = createMaster(
+    asyncContract,
     tokenStart,
     platformFirstSalePercentage,
     platformSecondSalePercentage,
-    owner,
     layers
   );
   masterToken.save();
+
+  let masterTokenObject = TokenMaster.load(tokenStart.toString() + "-Master");
 
   for (let index = 0; index < layers.toI32(); index++) {
     let tokenIdIndex = tokenStart.plus(BigInt.fromI32(index + 1));
     let token = createController(
       tokenIdIndex,
       platformFirstSalePercentage,
-      platformSecondSalePercentage
+      platformSecondSalePercentage,
+      tokenStart
     );
     token.save();
+    masterTokenObject.layers = masterTokenObject.layers.concat([
+      tokenIdIndex.toString() + "-Controller",
+    ]);
   }
+  masterTokenObject.save();
 }
+
 //////////////////////////////////////////////////
 //////////// LOAD TOKEN HOOK /////////////////////
 //////////////////////////////////////////////////
@@ -253,52 +365,65 @@ export function getOrInitialiseToken(
   asyncContract: Contract,
   tokenId: BigInt
 ): Token | null {
+  // Shift this check to only function that needs it
+  let globalState = getOrInitialiseGlobalState(asyncContract);
+  if (globalState.currentExpectedTokenSupply.lt(tokenId)) {
+    // This can only really happen on permission function
+    log.warning("SOMEONE CALLING STUFF ON NON_EXISTANT TOKEN!", []);
+    return null;
+  }
+
   // If it exists, could be just whitelisted, or minting / control setup could have happened.
   // Depending on what type of token it is.
   let token = Token.load(tokenId.toString());
   if (token == null) {
-    // This logic will only execute the first time we become aware of a v1 token!
-    // Or when a token does not yet exist or whitelisted
+    // This logic will only execute the first time we become aware of a v1 token or normal token!
 
-    // First check if token actually exists
-    // Rare case 1: Could be a token that doesn't at all exist if i.e. grantControlPermission called.
+    // If this passes it means the associated master has been minted
     let tokenCreator = asyncContract.try_uniqueTokenCreators(
       tokenId,
       BigInt.fromI32(0)
     );
     if (tokenCreator.reverted) {
-      log.warning("Token does not exist and not whitelisted!", []);
+      // token is only whitelisted. If master, its not minted. If Controller master and itself both not minted
+      // Handle this case! For now assume its only whitelisted!
+      log.warning("Token is currently ONLY whitelisted", []);
       return null;
     }
 
     // otherwise it exists lets create the token depending on what type of token it is.
-    // Will this error or have defaults.
-    let data = asyncContract.try_controlTokenMapping(tokenId);
+    // Checking if its a control or mater
+    let data = asyncContract.controlTokenMapping(tokenId);
+    let exists = data.value2;
+    let isSetup = data.value3;
 
-    // If its a control token
-    if (data.value.value2) {
-      // control token
+    // control token
+    if (exists) {
       token = createController(tokenId, BigInt.fromI32(0), BigInt.fromI32(0));
+      // If its only whitelisted, we have done out job
+      if (!isSetup) {
+        // Will have some creators
+        populateTokenUniqueCreators(asyncContract, tokenId);
+        return token;
+      }
     } else {
-      //otherwise intialize a master token
       token = createMaster(
+        asyncContract,
         tokenId,
         BigInt.fromI32(0),
         BigInt.fromI32(0),
-        ZERO_ADDRESS, // need to get and set owner!
-        BigInt.fromI32(0) // get layers sometime!!!!
+        BigInt.fromI32(0)
       );
     }
     token.save();
 
+    // since it must be minted!
     populateTokenUniqueCreators(asyncContract, tokenId);
 
-    // Populate the rest
+    // Populate the rest of the token!
     token = populateTokenHelper(asyncContract, tokenId, token);
   } else {
-    // If its already been pulled and set up, just return it! First most common case!
-    // If its creator is populated, that means it has been minted and set up
-    // Id master token is set up
+    // ALREADY EXISTS> EITHER POPULATED, Or just whitelisted
     if (token.isMaster) {
       if (token.uniqueTokenCreators != null) {
         return token;
@@ -320,7 +445,6 @@ export function getOrInitialiseToken(
       if (!data.value.value3) {
         return token;
       }
-
       populateTokenUniqueCreators(asyncContract, tokenId);
     }
 
@@ -342,14 +466,12 @@ function populateTokenHelper(
   let user: User | null;
   if (currentOwner.reverted) {
     log.critical("Owner should be defined", []);
-    user = createOrFetchUserString(ZERO_ADDRESS);
+    // control token is still only whitelisted.
   } else {
-    // TODO: Owner may not be creator for V1 tokens caution!
     user = createOrFetchUserBytes(currentOwner.value);
+    token.owner = user.id;
+    user.save();
   }
-
-  token.owner = user.id;
-  user.save();
 
   token.platformFirstSalePercentage = asyncContract.platformFirstSalePercentages(
     tokenId
@@ -359,11 +481,18 @@ function populateTokenHelper(
   );
   token.tokenDidHaveFirstSale = asyncContract.tokenDidHaveFirstSale(tokenId);
 
-  // token.permissionedAddress = getPermissionedAddress(
-  //   asyncContract,
-  //   tokenId,
-  //   currentOwner.value // cast to bytes
-  // );
+  let uri = asyncContract.try_tokenURI(tokenId);
+  if (uri.reverted) {
+    log.warning("uri does not exist yet", []);
+  } else {
+    token.uri = uri.value;
+  }
+
+  token.permissionedAddress = getPermissionedAddress(
+    asyncContract,
+    tokenId,
+    currentOwner.value // cast to bytes
+  );
 
   // Populate currentBid ->NOTE THIS will be populated by handler. No need to pull
   // Populate current buy price -> NOTE THIS will be populated by handler. No need to pull
@@ -455,6 +584,13 @@ export function getOrInitialiseLever(
     lever.maxValue = BigInt.fromI32(0);
     lever.currentValue = BigInt.fromI32(0);
     lever.previousValue = BigInt.fromI32(0);
+    lever.numberOfUpdates = BigInt.fromI32(0);
+    let tokenController = TokenController.load(
+      tokenId.toString() + "-Controller"
+    );
+    lever.layer = tokenController.id;
+    tokenController.levers = tokenController.levers.concat([lever.id]);
+    tokenController.save();
   }
   return lever;
 }
@@ -467,8 +603,8 @@ export function getOrInitialiseStateChange(txId: string): StateChange | null {
   if (stateChange == null) {
     stateChange = new StateChange(txId);
     stateChange.txEventParamList = [];
-    stateChange.ownerChanges = [];
-    stateChange.artworkChanges = [];
+    stateChange.userChanges = [];
+    stateChange.tokenChanges = [];
 
     return stateChange;
   } else {
@@ -525,7 +661,7 @@ function txStateChangeHelper(
   eventName: string,
   eventParamArray: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   contractVersion: i32
 ): void {
   let stateChange = getOrInitialiseStateChange(txHash.toHex());
@@ -547,16 +683,16 @@ function txStateChangeHelper(
     eventParams.id,
   ]);
   for (let i = 0, len = changedOwners.length; i < len; i++) {
-    stateChange.ownerChanges =
-      stateChange.ownerChanges.indexOf(changedOwners[i]) === -1
-        ? stateChange.ownerChanges.concat([changedOwners[i]])
-        : stateChange.ownerChanges;
+    stateChange.userChanges =
+      stateChange.userChanges.indexOf(changedOwners[i]) === -1
+        ? stateChange.userChanges.concat([changedOwners[i]])
+        : stateChange.userChanges;
   }
-  for (let i = 0, len = changedArtworks.length; i < len; i++) {
-    stateChange.artworkChanges =
-      stateChange.artworkChanges.indexOf(changedArtworks[i]) === -1
-        ? stateChange.artworkChanges.concat([changedArtworks[i]])
-        : stateChange.artworkChanges;
+  for (let i = 0, len = changedTokens.length; i < len; i++) {
+    stateChange.tokenChanges =
+      stateChange.tokenChanges.indexOf(changedTokens[i]) === -1
+        ? stateChange.tokenChanges.concat([changedTokens[i]])
+        : stateChange.tokenChanges;
   }
   stateChange.contractVersion = contractVersion;
   stateChange.save();
@@ -570,7 +706,7 @@ export function saveEventToStateChange(
   parameterNames: Array<string>,
   parameterTypes: Array<string>,
   changedOwners: string[],
-  changedArtworks: string[],
+  changedTokens: string[],
   version: i32
 ): void {
   let eventParamsArr: Array<string> = createEventParams(
@@ -586,7 +722,7 @@ export function saveEventToStateChange(
     eventName,
     eventParamsArr,
     changedOwners,
-    changedArtworks,
+    changedTokens,
     version
   );
 }
