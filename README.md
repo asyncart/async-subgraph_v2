@@ -2,7 +2,7 @@
 
 Navigate to: https://thegraph.com/explorer/subgraph/asyncart/async-art-v2
 
-Where you can run a number of cool queries!
+Where you can run a number of expressive queries! You can view a number of example queries in the left corner of the query explorer.
 
 E.g. Who are the top 5 users with most sales? 🤔
 -> https://thegraph.com/explorer/subgraph/asyncart/async-art-v2?query=Top%205%20users%20with%20highest%20total%20sale%20amount
