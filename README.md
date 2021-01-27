@@ -2,7 +2,7 @@
 
 Navigate to: https://thegraph.com/explorer/subgraph/asyncart/async-art-v2
 
-Where you can run a numer of cool queries!
+Where you can run a number of cool queries!
 
 E.g. Who are the top 5 users with most sales? 🤔
 -> https://thegraph.com/explorer/subgraph/asyncart/async-art-v2?query=Top%205%20users%20with%20highest%20total%20sale%20amount
